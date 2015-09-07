@@ -1,0 +1,2183 @@
+
+= Tworzenie aplikacji z użyciem ejb3 
+Jakub Marchwicki
+:toc: 
+:toc-title: Spis treści
+
+
+////
+Dodać wstęp
+////
+
+
+
+== Moduł 1: Kontener EJB
+Specyfikacja EJB to element szerszego API, jakim jest Java Enterprise Edition (JEE), platformy stworzonej z myślą o skalowalnych aplikacjach, działających w środowisku rozproszonym. EJB (ang. _Enterprise Java Beans_) to jedna ze specyfikacji wchodzących w skład JEE. Swoim zakresem obejmuje ona komponenty zarządzane po stronę serwera (ang. _server side managed beans_).
+
+Elementem odpowiadającym za zarządzanie (tworzenie, uruchamianie) jest tzw. kontener – element serwera aplikacji odpowiadający za pewien wycinek platformy. Dodatkowo, kontener udostępnia także zestaw zasobów i usług (funkcjonalności) krytycznych z punktu widzenia aplikacji, ułatwiających implementację najczęstszych wymagań stawianych tego typu aplikacjom. Tym samym, znacząco odciąża programistów i architektów, umożliwiając im skupienie się na wymaganiach funkcjonalnych i zrozumienia otoczenia biznesowego. Wśród tych elementów można wymienić:
+
+* transakcyjność,
+* persystencje (współpracę z bazą danych),
+* wielowątkowość (narzędzia umożliwiające przetwarzanie wielu transakcji jednocześnie przy jednoczesnym zapewnieniu odpowiedniej izolacji),
+* rozproszoność (możliwość zdalnego wywoływania procedur – zarówno poprzez RMI jak i poprzez Web Service),
+* asynchroniczność (w tym obsługa kolejek i zdarzeń wynikających z przetwarzania wiadomości w tle),
+* bezpieczeństwo (autoryzacja i autentykacja),
+* skalowalność (możliwość wdrożenia aplikacji na wiele węzłów jednocześnie, zapewniając mechanizmy replikacji krytycznych danych),
+* wyzwalanie usług czasem.
+
+Technologia EJB jest wynikiem prac _Java Community Process_, kolegialnego ciała, które zatwierdza elementy specyfikacji, jako standard. Dlatego też, jeżeli producent reklamuje swój serwer jako zgodny ze specyfikacją EJB, musi to oznaczać dostarczenie wyżej wymienionych elementów jako składowych części produktu. Działa to w obie strony; jeżeli jako architekci aplikacji planujemy wykorzystać którąś (bądź większość) z wymienionych powyżej funkcjonalności, używając serwera zgodnego z EJB możemy zakładać, że zminimalizowany zostanie nakład pracy związany z np. implementacją wymagań niefunkcjonalnych. JEE nie jest produktem jednej firmy, jest to abstrakcja istniejących produktów, bibliotek i_ frameworków_.
+
+Zwykło się przyjmować, że komponenty EJB obejmują przede wszystkim elementy systemu związane z przetwarzaniem logiki biznesowej. Podczas gdy pozostałe elementy aplikacji, jak na przykład generowanie widoków w formie stron WWW przejmowane jest przez inne składowe platformy. I tak, poza samym EJB, architektura EE obejmuje kilka dodatkowych specyfikacji, z których najważniejsze to Servlets API i Java Server Faces, Java Messaging Service (JMS), Java Persistence API (JPA), WS-* (WebService z wykorzystanie SOAP) itd. Nie jest więc przypadkiem, że większość współczesnych serwerów aplikacji nie udostępnia tylko i wyłącznie kontenera EJB, ale wspiera go kilkoma innymi technologiami, dostarczając całościowe rozwiązanie w postaci serwera aplikacji. Niemniej jednak, każdy z tych elementów może funkcjonować samodzielnie i nie muszą być powiązane z EJB. Przykładowo OpenEJB będący samodzielnym kontenerem EJB albo serwer WWW Apache Tomcat lub Jetty, implementujące specyfikacje serwletów (bez EJB), ApacheMQ jako niezależna implementacja JMS. Jest zatem możliwie stworzenie aplikacji WWW bazującej tylko i wyłącznie na serwetach, bądź wykorzystanie JPA jako technologii mapowania obiektowo relacyjnego, w klasycznej aplikacji _standalone_.
+
+
+
+NOTE:: Insert original images 
+
+
+
+
+
+		
+=== Specyfikacja
+
+Specyfikacje JEE nie jest martwym dokumentem; żyje i jest nieustannie rozwijana i udoskonalana. Niniejsze szkolenie obejmuje przede wszystkim EJB 3.0 (platforma JEE5). Jest to specyfikacja opublikowana w 2006 roku – JSR 220. Niemniej jednak, w 2009 roku zaaprobowana została specyfikacja EJB 3.1 (JSR 318), które wprowadzają szereg zmian i udoskonaleń. Dla uproszenia, w dalszej części szkolenia pisząc EJB lub EJB3 odnosić się będę do platformy JEE5 (EJB3.0). W momentach odnoszących się do EJB 3.1 (np. podczas omawiania pewnych nowości i ułatwień) numer specyfikacji będzie wymieniony _explicite_. W trakcie szkolenia pojawi się kilka elementów, gdzie specyfikacja EJB została znacząco ulepszona – zostanie to zaznaczone w trakcie szkolenia oraz pokazane na przykładach. Szkolenie nie będzie się skupiać na najnowszej wersji specyfikacji, ponieważ w momencie tworzenia niniejszego szkolenia adopcja specyfikacji pośród producentów serwerów aplikacji pozostawia jeszcze sporo do życzenia (dostępna jest jedynie referencyjna implementacja serwera Glassfish a inny dostawcy jak JBoss i/lub IBM dopiero pracują na kolejnymi wersjami serwerów, implementującymi EJB 3.1). 
+
+Z premedytacją zostaną natomiast pominięte elementy specyfikacji które wyszły z użycia. Jedynie ze względów historycznych zostaną wspomniane komponenty encyjne (ang. CMP - _Container Managed Persistence_) ponieważ ta część specyfikacji została całkowicie zastąpiona przez JPA. 
+
+Jak widać, kolejne wersje specyfikacji wprowadzają szereg ułatwień i uproszczeń. Wersja EJB3 miała na celu:
+
+* ułatwienie procesu tworzenia komponentów poprzez uproszczenie EJB API - co znacząco zwiększyło atrakcyjność platformy,
+* zapewnienie zgodności z EJB 2.1, aby umożliwić migrację istniejących rozwiązań na nową platformę i kontynuację ich rozwoju już w nowej technologii (bez konieczności przepisywania istniejących aplikacji), 
+* wykorzystanie nowości zaprezentowanych w Java 5.0; na przykład adnotacji - co umożliwiło przetrzymywanie metadanych razem z kodem źródłowym, bez konieczności sięgania po dodatkowe zewnętrzne narzędzia jak XML lub XDoclet,
+* minimalizację ilości interfejsów koniecznych do zaimplementowania. W EJB3 nie ma konieczności rozszerzania abstrakcyjnych klas bądź implementowania interfejsów specyficznych dla platformy – co znacznie zwiększa czystość i czytelność kodu źródłowego, 
+* wprowadzenie adnotacji do konstruowania powiązań między obiektami, przez co ich definiowane w deskryptorach wdrożenia stało się opcjonalne,
+* wprowadzenie JPA jako ujednoliconej warstwy persystencji / utrwalania,
+* wprowadzenie interceptorów, czyli namiastki programowania aspektowego (ang. _aspect oriented programming_). 
+
+
+		
+=== Środowisko
+
+Jako środowisko proponuje serwer aplikacji JBoss w wersji 6. Nie jest to niestety referencyjna implementacja specyfikacji, niemniej jednak serwer ten należy do najpopularniejszych kontenerów EJB. Co więcej, JBoss w wersji 6 implementuje niektóre elementy specyfikacji JEE6, umożliwi więc prezentację niektórych nowości oraz ich zestawienie z wzorcami dotychczas stosowanymi. 
+
+Środowiskiem programistycznym będzie Eclipse IDE (Eclipse for Java EE developers). 
+
+
+
+== Moduł 2: Komponenty EJB
+Historycznie rzecz ujmując powinniśmy rozważać trzy rodzaje komponentów EJB: sesyjne (stanowe i bezstanowe – odpowiadające za przetwarzanie logiki biznesowej), encyjne (realizujące dostęp do bazy danych - tzw. warstwa persystencji) i sterowanie komunikatami (umożliwiające asynchroniczne przetwarzanie). Wraz z wejściem w życie specyfikacji EJB3 komponenty encyjne zostały zastąpione przez JPA (ang. _Java Persistence API_) i wspomniane są tutaj tylko i wyłącznie ze względów historycznych. Na początek skoncentrujmy się na elementach sesyjnych, podczas gdy kwestia bazy danych zostanie omówiona w dalszej części szkolenia. 
+
+Warto tutaj zwrócić uwagę na kwestie nazewnictwa. W wielu publikacjach spotyka się tłumaczenie angielskich nazw na język polski. W niniejszym szkoleniu - i odzwierciedla to moje osobiste poglądy - elementy specyfikacji takie jak Enterprise Java Beans, Java Persistence API itp. to nazwy własne i jako takie nie powinny być tłumaczone. Moim zdaniem wprowadzanie zwrotów i określeń w języku polskim odbywa się trochę na siłę i określenia typu korporacyjne ziarna Javy, stadia rozwojowe cyklu życia itd. wprowadzają więcej szkody i zamieszania niż pożytku. Stąd też obecność angielskich stwierdzeń i nazw. Uważam że pozostawienie ich w instrukcji umożliwia sprawniejsze posługiwanie się szkoleniem w połączeniu ze specyfikacją EJB, dokumentacją serwera aplikacji lub środowiskiem programistycznym. 
+
+
+		
+=== Hello World!
+
+Na początek utwórzmy pierwszy, przykładowy komponent, aby następnie szczegółowo omówić poszczególne jego elementy. Zacznijmy, zatem od podstawowego elementu aplikacji opartych o specyfikację EJB, tj. bezstanowych elementów sesyjnych (ang. _Stateless session bean_). Definiowanie takiego elementu w EJB3 zaczynamy od zdefiniowania interfejsu - metod biznesowych.
+
+
+
+[source, java]
+----          	
+			package pl.bnsit.ejb3;public interface SampleEnterpriseService {public String helloWorld(String str);}            
+----   
+
+Tylko publiczne metody zdefiniowane w interfejsie będą dostępne dla innych komponentów EJB - dlatego też zwykło się je nazywać metodami biznesowymi. 
+
+Implementacja interfejsu jest równie naiwna.
+
+
+
+[source, java]
+----          	
+			package pl.bnsit.ejb3;import javax.ejb.Stateless;@Statelesspublic class SampleEnterpriseBean implements SampleEnterpriseService {public String helloWorld(String str) {return "Hello " + str + "! Hello world!";}}            
+----   
+
+Tak przygotowane klasy możemy wdrożyć na serwer aplikacji. Chwilowo, bez wdawania się w szczegóły, użyjemy mechanizmów dostarczonych przez środowisko IDE. 
+
+W momencie wdrożenia wszystkie zdefiniowane przez nas komponenty (a także wiele innych dostarczanych przez kontener i serwer aplikacji) rejestrowane są z katalogu nazw - JNDI (ang. _Java Naming and Directory Interface_). Samo drzewo nazw zostanie omówione dokładniej w dalszej części szkolenia. Na obecną chwilę wystarczająca jest świadomość, że taka struktura istnieje oraz że służy ona do integrowana komponentów ze sobą; kontener rejestruje elementy w drzewie oraz umożliwia wzajemne pobieranie referencji do innych zarejestrowanych elementów.
+
+Tym sposobem udało nam się stworzyć pierwszy komponent EJB - póki, co nie wiele on robi i nie bardzo wiemy jak go wywołać, ale w logach serwera wyraźnie widzimy, że został on utworzony i zarejestrowany. 
+
+
+
+[source, java]
+----          	
+			10:44:13,468 INFO [org.jboss.ejb3.proxy.impl.jndiregistrar.JndiSessionRegistrarBase] Binding the following Entries in Global JNDI:            
+----   
+
+GettingStarted/SampleEnterpriseBean/local - EJB3.x Default Local Business InterfaceGettingStarted/SampleEnterpriseBean/local-pl.bnsit.ejb3.SampleEnterpriseService - EJB3.x Local Business InterfacePo tych chwilowym sukcesie, przyjrzyjmy się dokładnie, co się stało oraz w jaki sposób działa utworzony przez nas serwis.
+
+
+		
+=== Komponenty sesyjne
+
+Utworzony komponent jest bezstanowy. Nazwa ta nie jest przypadkowa, jest to element zawierający czystą logikę biznesową, nieposiadający stanu. 
+
+Można powiedzieć, że komponent składa się z dwóch elementów: interfejsu (definiującego metody biznesowe - swego rodzaju kontrakt) oraz implementacji. Interfejs używany jest do komunikacji z klientem (np. innym komponentem EJB). Klient nigdy nie ma bezpośredniego dostępu to klasy. Można to schematycznie przedstawić w następujący sposób:
+
+
+
+NOTE:: Insert original images 
+
+
+
+
+Dostęp do logiki biznesowej odbywa się zawsze poprzez _proxy_. Wynika to z założenia, że aplikacje EJB z założenia są systemami rozproszonymi, więc nigdy nie ma pewności używany komponent jest lokalny (dostępny w obrębie tej samej wirtualnej maszyny Java) czy też jest wywoływany zdalnie. Stąd też potrzeba definiowania interfejsu biznesowego - który implementowany jest także przez dostarczone przez kontener _proxy_. To także dzięki _proxy_ kontener jest w stanie dostarczyć wspomniane wcześniej usługi takie jak zarządzanie transakcjami, autoryzację i autentykację w dostępie do zasobów, interceptory itp. 
+
+Utworzony na samym początku komponent jest bezstanowy, co wskazuje sama nazwa, tzn. nie posiada wewnętrznego stanu, który jest przechowywany pomiędzy wywołaniami. Jest to podstawowy typ komponentu który wykorzystywany jest w EJB. Nie znaczy to oczywiście, że taki element nie może posiadać atrybutów (klasa nie może posiadać atrybutów); jest to dozwolone ale może prowadzić do nieprzewidzianych skutków. Wynika to ze sposobu działania kontenera; utworzone obiekty trafiają do puli, z której są pobierane jak przyjdzie potrzeba. W przypadku większych systemów pula składa się z więcej niż jednego obiektu, nie ma, więc pewności, że podczas wielokrotnego wywołania tej samej metody, operacja zostanie wykonana wykorzystując ten samą instancję obiektu. Co więcej, nie ma też pewności czy pomiędzy wywołaniami, ta sama instancja nie została wykorzystana przez inny obiekt, a co za tym idzie – nie wiadomo czy stan obiektu nie uległ modyfikacji. Dlatego właśnie na każdym kroku podkreślana jest bezstanowa natura komponentów. 	
+
+
+		
+=== Cykl życia komponentu
+
+Cykl życia komponentu bezstanowego może być przedstawiony w następujący sposób.
+
+
+
+NOTE:: Insert original images 
+
+
+
+
+Kontener EJB całkowicie odpowiada za cykl życia komponentu; za jego utworzenie, powiązanie zależności, uruchomienie oraz udostępnienie dla innych komponentów. Projektant aplikacji nie ma wpływu na to czy i kiedy zostaną wywołane znane z poprzednich wersji specyfikacji metody _create_(), _start_(), _destory_() - jest to domena serwera. Oczywiście wciąż możemy korzystać z tych metod poprzez implementację odpowiednich interfejsów lub wykorzystując dedykowane rozszerzenia platformy dostarczone przez producenta serwera (np. adnotacja @_Management_ w środowisku serwera aplikacji JBoss). Nie jest to jednak zalecane i specyfikacja dopuszcza użycie tych metod raczej ze względu na potrzebę zachowania wstecznej kompatybilność z już istniejącymi aplikacjami. Autorzy specyfikacji przewidzieli inny, mniej inwazyjny sposób umożliwiający programistom ‘podczepienie się’ pod metody związane cyklem życia obiektu. ‘_Lifecycle hooks_’ są to metody wywoływane w powiązaniu z cyklem życia komponentu i należą do nich metody oznaczone adnotacjami @_PostConstruct_ i @_PreDestroy_.
+
+Ważne jest aby wiedzieć, że kontener gwarantuje wywołanie metod związane z cyklem życia, jednakże jako programiści nie mamy pewności kiedy to nastąpi; czy w momencie utworzenia instancji obiektu, dodania komponentu do puli czy np. dopiero w momencie gdy komponent będzie po raz pierwszy wykorzystany w aplikacji - wywołany przez inny komponent. Jest to zależne od dostawcy serwera i jako że w bezpośredni sposób wpływa na wydajność i szybkość środowiska, jest mocno zależne od konkretnego sposobu implementowania specyfikacji oraz od wewnętrznych rozwiązań platformy. 
+
+Utworzony komponent jest gotowy do pracy, tzn. może zostać wykorzystany przez inne komponenty, jest w pełni zainicjowany i mogą zostać wywołane metody biznesowe, zdefiniowane w interfejsie. 
+
+
+		
+=== Rozpoczęcie transakcji
+
+W momencie pierwszego wywołania metody biznesowej komponentu (czy to przez inny komponent, aplikację WWW czy przez zdalnego, grubego klienta), tworzona jest nowa transakcja. Transakcje w EJB są izolowane na poziomie wątku - to znaczy że każda transakcja ma swój własny wątek. Dzięki temu rozwiązany został problem współbieżności; na czas trwania transakcji dostęp do poszczególnych komponentów otrzymuje się na wyłączność. Nie ma konieczności synchronizowania stanu obiektu - co uwalnia programistę od myślenia i pamiętania o szeregu pojęć związanych z zależnościami pomiędzy wątkami i współbieżnością. Ten medal ma jednak dwie strony, jak już zostało wspomniane wcześniej - jeżeli jakikolwiek stan zostanie zapisany w obiekcie, może być od odczytany (a więc może wpłynąć na zachowanie) innych obiektów, teoretycznie niepowiązanych. Ma to zgubny wpływ na system i z reguły objawia się błędami w najmniej oczekiwanych miejscach. 
+
+Oczywiście opisany sposób zarządzania wątkami nie jest jedynym możliwym – jest domyślny. Programista zawsze może przejąć na siebie ciężar obsługi współbieżności – co w ogromnej większości przypadków nie jest konieczne. Co więcej, współbieżność to nie jest jedyna rzecz którą na początku nie trzeba zaprzątać sobie głowy. Wraz z wejściem specyfikacji EJB3 więcej elementów konfiguracyjnych posiada domyślne wartości, które w 80% przypadków są poprawnymi wartościami z punktu widzenia aplikacji i z powodzeniem można korzystać z ustawień przyjętych przez kontener. Domyślną wartością jeżeli chodzi o transakcyjność jest poziom REQUIRED, tj. kontener tworzy nową transakcję jeżeli nie istnieje lub korzysta z już istniejącej. Oznacza to że w ogromnej większości przypadków nie ma konieczności zastanawiania się nad kwestią: czy dana operacja wymaga transakcji. Ponownie, nie jest to oczywiście jedyna dostępna możliwość, ale na analizowanie różnić poszczególnymi konfiguracjami jeszcze przyjdzie pora. Tak samo jak dokładniejszego omówienia będą wymagały kwestie konfiguracji puli komponentów (domyślnie w przypadku serwera JBoss - o rozmiarze nieskończonym) a także definiowanie zdalnych i lokalnych interfejsów (w przypadku tylko jednego implementowanego interfejsu, zakłada się że jest on lokalny i nie wymaga dodatkowej konfiguracji). 
+
+Co najważniejsze, żadna z powyższych wartości nie została jawnie zadeklarowana w pierwszym przykładzie. Nie było takiej konieczności, ponieważ kontener EJB dostarcza całego szeregu usług skonfigurowanych w domyślny sposób. To właśnie w największym stopniu odróżnia EJB 2.x od EJB 3 - _convention over configuration_ i rezygnacja z jawnego deklarowania najdrobniejszych aspektów konfiguracji. W końcu wartości domyślne w większości przypadków sprawdzają się doskonale. 
+
+
+		
+=== Pula elementów
+
+W celu omówienia działania puli komponentów, wróćmy na chwilę do ilustracji na początku modułu. Jak widać na diagramie cyklu życia, utworzony element przekazywany jest do puli komponentów. Pula komponentów (ang. P_ooling_) jest kolejnym istotnym elementem, koniecznym dla zrozumienia specyfiki EJB. Jeżeli komponent nie jest aktualnie wykorzystywany (nie jest związany z żadnym klientem – np. po utworzeniu lub po zakończeniu transakcji), obiekt przekazywany jest do puli gdzie czeka na kolejne wywołanie. Domyślna wielkość puli zależna jest o implementacji kontenera (dostawcy serwera) i może być regulowana poprzez mechanizmy dostarczone przez producenta serwera (np. adnotacja @_Pool_ dla środowiska JBoss). 
+
+Jeżeli obiekt znajdzie się w puli, może być swobodnie wykorzystany przez inne komponenty. Z instancji pojedynczego obiektu korzysta tylko jeden inny obiekt. Jeżeli zwiększa się ilość odwołań do komponentu, kontener tworzy dodatkowe instancje klasy i dodaje je do puli. To samo tyczy się już wykorzystanych obiektów - wracają one do puli. Dlatego też została podkreślona bezstanowość komponentów sesyjnych – pomiędzy oddaniem obiektu do puli, a jego ponownym wykorzystanie nie są wykonywane żadne dodatkowe operacje na obiekcie bezstanowym (nie jest on czyszczony, odświeżany). Dlatego, jeżeli na skutek błędnej konstrukcji klasy, stan obiektu zostanie przechowany, może on być dostępny dla innych obiektów - co jest zachowaniem niepożądanym. 
+
+Sposób realizacji puli komponentów nie jest narzucony przez specyfikację - jest to domena dostawcy serwera aplikacji i bardzo często implementacja puli tworzy przewagę konkurencyjną dostawcy (na przykład w zakresie wydajności serwera aplikacji). Używany podczas szkolenie serwer aplikacji JBoss wykorzystuje nieskończona pulę elementów (nie ma ograniczeń jeżeli chodzi o liczbę utworzonych instancji). Z jednej strony, przy założeniu wydajnego odświecania pamięci (wydajnej pracy _Garbage Collector’a)_ i braku wycieków pamięci, wydaje się to być rozwiązaniem wygodnym. Z drugiej jednak strony, na przestrzeni ostatnich lat (i wersji serwera aplikacji), zarządzanie pulą komponentów doczekało się szeregu mniej lub bardziej poważnych defektów (na wspomnianych wyciekach pamięci skończywszy). 
+
+Powyższe podejście jest od lat przedmiotem dyskusji; czy pula elementów jest zjawiskiem pożądanym czy nie, czy wpływa na wydajność serwera czy jest zbędną nadmiarowością. Z założenia iż pula elementów tylko niepotrzebnie komplikuje proces wyszli autorzy biblioteki Spring Framework, gdzie wszystkie komponenty są z definicji bezstanowe. Co więcej, domyślnie komponenty realizują wzorzec singleton, tzn. istnieje tylko jedna instancja danej klasy w kontekście. Nie jest to singleton w rozumieniu wzorców projektowych GOF - Gang of Four, nie wymaga specjalnej konstrukcji klasy. Nazwa singleton sugeruje raczej istnienie tylko jednej instancji klasy w obrębie aplikacji. 
+
+
+		
+=== Integracja komponentów EJB z innymi warstwami
+
+Jak dobrze wiemy, żadna aplikacja nie składa się tylko i wyłącznie z logiki biznesowej. W znakomitej większości przypadków aplikacje J EE składają się z czterech warstw: przeglądarki, warstwy prezentacji, logiki biznesowej oraz bazy danych. Przeglądarka pełni rolę tzw. cienkiego klienta; komponenty EJB, realizujące wspomnianą logikę wymagają odpowiedniego wywołania. Kwestiami bazy danych zajmiemy się w dalszej części szkolenia. Wróćmy zatem do naszego podstawowego przykładu i spróbujmy wywołać utworzony komponent. Upublicznienie biznesowych interfejsów komponentów EJB może się odbywać na wiele sposobów; można poprzez RMI-IIOP wywoływać metody zdalne (te oznaczone adnotacją @_Remote_), można upublicznić niektóre metody jak Web Service (adnotując klasę przy użyciu @_javax.jws.WebService_ i wyszczególniając metody webowe za pomocą @javax.jws._WebMethod_). 
+
+Najprostszym klientem dla naszej aplikacji JEE, jest program napisany w Javie, odwołujący się do komponentów poprzez zdalny interfejs.
+
+
+
+[source, java]
+----          	
+			package pl.bnsit.ejb3.client;import java.util.Hashtable;import javax.naming.Context;import javax.naming.InitialContext;import pl.bnsit.ejb3.SampleServiceRemote;public class EjbClient {public static void main(String[] a) throws Exception {	 Hashtable<String, String> environment = new Hashtable<String, String>();	environment.put(Context.INITIAL_CONTEXT_FACTORY, 	"org.jnp.interfaces.NamingContextFactory");	environment.put(Context.URL_PKG_PREFIXES, 	"org.jboss.naming:org.jnp.interfaces");	environment.put(Context.PROVIDER_URL, 	"jnp://localhost:1099"); 	InitialContext ctx = new InitialContext(environment);SampleServiceRemote obj = (SampleServiceRemote) ctx.lookup("SampleApplication/SampleService/remote");System.out.println("Starting: " + System.currentTimeMillis());System.out.println(obj.helloWorld());System.out.println("Done: " + System.currentTimeMillis());}}            
+----   
+
+Poprawne działanie takiego klienta wymaga od programisty spełnienia kilku warunków:
+
+* zdefiniowana interfejsów zdalnych w aplikacji,
+* przygotowania biblioteki (plik jar) zawierającej interfejsy potrzebne do komunikacji (ejb-client),
+* poprawne zdefiniowanie serwera gdzie komponenty zdalne są wdrożone (w naszym przypadku serwer lokalny) oraz portu (tutaj - domyślny port RMI 1099). 
+
+Alternatywą, jest wstrzyknięcie komponentu EJB bezpośrednio do serwetu. Serwety są standardem opisującym warstwę prezentacji - pomost pomiędzy przeglądarką (cienkim klientem) a logiką biznesową.
+
+
+
+[source, java]
+----          	
+			package pl.bnsit.ejb3.web;import java.io.IOException;import javax.ejb.EJB;import javax.servlet.ServletException;import javax.servlet.http.HttpServlet;import javax.servlet.http.HttpServletRequest;import javax.servlet.http.HttpServletResponse;import org.apache.log4j.Logger;import pl.bnsit.ejb3.SampleServiceLocal;public class SampleServlet extends HttpServlet {private static Logger logger = Logger.getLogger(SampleServlet.class);@EJBSampleServiceLocal sampleService;@Overrideprotected void doGet(HttpServletRequest req, HttpServletResponse resp)throws ServletException, IOException {resp.getWriter().append(sampleService.helloWorld());resp.getWriter().flush();}}            
+----   
+
+Jest to funkcjonalność będąca elementem specyfikacji EJB3 i jest zaimplementowana we wszystkich ważniejszych (i nowszych) serwerach aplikacji. Nie jest to zdalne wywołanie, ponieważ zarówno komponenty EJB jak i aplikacja webowa muszą być elementami tego samego archiwum.
+
+
+		
+=== WebService i metody web
+
+Począwszy od wersji 3.0 specyfikacja EJB umożliwia bezpośrednią publikację komponentu sesyjnego jako webserwisu. W tym celu wystarczy dodać dwie adnotacje: @_javax.jws.WebService_ oraz @_javax.jws.WebMethod_.
+
+
+
+[source, java]
+----          	
+			package pl.bnsit.ejb3.ws;import javax.ejb.Stateless;import javax.jws.WebMethod;import javax.jws.WebService;@Stateless@WebServicepublic class SampleWebMethodService implements SampleWebMethodLocal {@WebMethodpublic String helloWebService(String name) {return "Hello " + name + "! I'm a web service!";}            
+----   
+
+
+
+[source, java]
+----          	
+			}            
+----   
+
+Tak przygotowany serwis jest natychmiast dostępny dla klientów (zarówno lokalnych poprzez JNDI i wywołania lokalne), jak i zdalnych poprzez protokół HTTP-SOAP. Serwer aplikacji samodzielnie dba o publikację specyfikacji serwisu (dokumentu WSDL) oraz mapowanie przychodzących żądań na obiekty Java. Pod adresem 
+		link:http://localhost:8080/SampleApplicationEJB/SampleService?wsdl[http]
+	
+		link:http://localhost:8080/SampleApplicationEJB/SampleService?wsdl[://]
+	
+		link:http://localhost:8080/SampleApplicationEJB/SampleService?wsdl[localhost]
+	
+		link:http://localhost:8080/SampleApplicationEJB/SampleService?wsdl[:8080/]
+	
+		link:http://localhost:8080/SampleApplicationEJB/SampleService?wsdl[SampleApplicationEJB]
+	
+		link:http://localhost:8080/SampleApplicationEJB/SampleService?wsdl[/]
+	
+		link:http://localhost:8080/SampleApplicationEJB/SampleService?wsdl[SampleService]
+	
+		link:http://localhost:8080/SampleApplicationEJB/SampleService?wsdl[?]
+	
+		link:http://localhost:8080/SampleApplicationEJB/SampleService?wsdl[wsdl]
+	 dostępny jest wygenerowany dokument WSDL.
+
+Można pokusić się o stwierdzenie, że jest to najpopularniejszy obecnie sposób na zdalne wywoływanie metody EJB; jest łatwy w implementacji oraz jest technologicznie przeźroczysty. HTTP-SOAP opiera się na XMLu i niemalże każdy język programowania posiada narzędzia umożliwiające komunikację tym protokołem. Niestety, XML powoduje dodatkowy narzut (w porównaniu do obiektów binarnych) zarówno jeżeli chodzi o czas przetwarzania samych wiadomości (translacja XML - obiekt Java i vice-versa) oraz transferu (plik XML jest tekstowy więc siłą rzeczy zajmuje więcej pamięci niż obiekt binarny). 
+
+Oczywiście ten krótki przykład nie wyczerpuje tematu metod webowych (WebService), jest jednak wystarczający, aby zaprezentować ich sposób działania. Jako że jest element specyfikacji nieodzownie związany z komponentami sesyjnymi został opisany w tej części szkolenia. Oczywiście możliwości serwera aplikacji wykraczają daleko poza pokazane powyżej, dwie, bezparametrowe adnotacje. @_WebService_ i @_WebMethod_, podobnie jak cały szereg innych technologii wchodzących w skład JEE, to oddzielna, samodzielna specyfikacja - JSR181 WebService Metadata for Java (JWS). Podobnie jak JMS, JPA – JWS może istnieć samodzielnie. Jest jednak elementem większości serwerów aplikacji i doskonale integruje się z EJB. Można powiedzieć że stało się do pewnego stopnia alternatywą dla adnotacji @_Remote_ w przypadku wywołań zdalnych.
+
+
+		
+=== Wstrzykiwanie zależności
+
+W poprzednim przykładzie utworzyliśmy serwlet wykorzystujący komponent EJB. Nasza rola (jako programisty) sprowadziła się do wskazania odpowiedniego serwisu i oznaczeniu referencji adnotacją @EJB. O resztę zadbał serwer: utworzył obiekt lub pobrał go z puli istniejących obiektów a następnie ‘wstrzyknął’. Wstrzykiwanie zależności (ang. _dependency injection_, DI), jest jedną z większych innowacji wprowadzonych w EJB3. Można go utożsamiać z paradygmatem ‘odwrócenia sterowania’ (ang. _Inversion of Control, IoC_), gdyż jest to jego najpopularniejsza realizacja. Dla wszystkich mających wcześniej styczność np. z Spring Framework, jest to pojęcie oczywiste, gdyż właśnie w doskonale zrealizowanym wstrzykiwaniu zależności tkwi siła tego narzędzia. 
+
+Jednakże, dla tych osób które pierwszy raz stykają się z wstrzykiwaniem zależności, kilka słów wyjaśnienia; ideą DI jest przeniesienie na zewnątrz obiektu odpowiedzialności za kontrolę zależności obiektu. Oznacza to że jeżeli dwa obiekty zależą od siebie, to kontener decyduje o tym jak i kiedy powiązać je ze sobą. Umożliwia to budowę luźnych powiązań między obiektami (ang. _loose coupling_); sytuację w której powiązania i relacje między obiektami nie są przypisane do obiektu, gdzie definicja klasy jest swego rodzaju szablonem, a ostateczną decyzję nt. instancji obiektu podejmuje kontener. 
+
+Co to oznacza dla EJB? Przede wszystkim, serwisy realizujące poszczególne elementy logiki biznesowej nie są w jakikolwiek sposób powiązane z samym kontenerem EJB. Serwisy nie muszą implementować specyficznych dla platformy interfejsów (jak _javax.ejb.SessionBean_, _javax.ejb.EjbObject_), nie muszą odwoływać się do obiektów niezwiązanych z domeną dziedziny (_javax.naming.InitialContext_) w celu pobrania referencji do obiektów zależnych; kod zyskuje na czytelności obejmując tylko i wyłącznie obiekty związane z samą aplikacją. Zastosowanie wstrzykiwania zależności dodaje także elastyczności samym komponentom. Nie ma potrzeby jawnego tworzenia instancji, przez co ewentualna zmiany jednej implementacji na inną nie wymagają dodatkowych nakładów na refaktoryzację już istniejących komponentów. 
+
+
+		
+=== JNDI
+
+Wstrzykiwanie zależności realizowane jest przez kontener w oparciu o drzewo nazw JNDI (ang. _Java Naming and Directory Interface_). To co w poprzednich wersjach platformy należało wyrazić eksplicite w EJB3 realizowane jest przy znikomym zaangażowaniu programisty. 
+
+I tak zamiast jawnego odwołania do drzewa JNDI w kodzie klasy, wystarczy oznaczenie zależności poprzez @EJB
+
+
+
+[source, java]
+----          	
+			SampleServiceLocal sampleService;//..InitialContext ctx = new InitialContext();sampleService = (SampleServiceLocal)ctx.lookup("java:comp/env/someServiceLocal");            
+----   
+
+
+
+
+
+[source, java]
+----          	
+			@EJBSampleServiceLocal sampleService;            
+----   
+
+Ten element ‘magii’ dostarczany przez kontener wymaga jednak dokładniejszego opisu. 
+
+Jak już wspomniałem, sposób łączenia komponentów z drzewem JNDI jest zależny od dostawcy serwera i jako taki może stanowić jego przewagę konkurencyjną. Co za tym idzie - i na wstępie należy to podkreślić - wykorzystanie w aplikacji odwołań poprzez JNDI zamiast wstrzykiwania zależności może spowodować problemy z przenaszalnością rozwiązania pomiędzy serwerami aplikacji różnych dostawców. Kwestie te zostały uregulowane dopiero z wejściem EJB 3.1, gdzie prowadzono do specyfikacji pojęcie globalnego drzewa nazw (ang. global JNDI). Ale o tym za chwilę.
+
+W związku z potencjalną różnorodnością skupię się na przykładach związanych z serwerem aplikacji JBoss, który wykorzystujemy jako platformę do prezentacji przykładów w niniejszym szkoleniu. W momencie w którym zdefiniujemy najprostszy komponent EJB - chociażby taki jak ten z pierwszego komponentu utworzonego na początku modułu, jest on rejestrowany w drzewie nazw. Domyślny klucz pod którym można utworzony komponent odnaleźć to ejbName/local i ejbName/remote (w przypadku gdy istnieje interfejs zdalny). Jeżeli komponent EJB jest zawarty w archiwum EAR, to klucz pod którym jest rejestrowany nieznacznie się zmienia: earName/ejbName/local (oraz earName/ejbName/remote - odpowiednio). 
+
+Zaprezentowana strategia nazewnicza jest spójna w obrębie dostawcy serwera (np. dla serwera JBoss 4.x, 5.x i używanego w szkoleniu wersji 6.x). Umożliwia to migrację do nowszych wersji serwera, ale jak już wspomniałem wcześniej, w przypadku innych serwerów nazewnictwo może być diametralnie inne. Oczywiście, każdy serwer aplikacji udostępnia narzędzia to nadpisania tych domyślnych zachowań (adnotacja @_org.jboss.ejb3.LocalBinding_ dla środowiska JBoss), jednakże jest to kolejne specyficzne dla dostawcy rozszerzenie specyfikacji i jako takie nie będzie dalej omawiane. 
+
+Aktualną zawartość drzewa nazw można w każdej chwili podglądnąć w konsoli administracyjnej serwera, za pomocą serwisu JNDIView. Wyświetla on wszystkie komponenty zarejestrowany w obrębie serwera aplikacji w formie drzewa:
+
+
+
+[source, java]
+----          	
+				+- GettingStarted (class: org.jnp.interfaces.NamingContext) 	| 	+- GenericSampleService (class: org.jnp.interfaces.NamingContext) 	| 	| 	+- local (class: Proxy for: pl.bnsit.ejb3.tst.SampleServiceLocal)            
+----   
+
+W poprzednim przykładzie (wywołanie komponentu EJB poprzez serwlet), cała magia łączące dwa komponenty między sobą została zawarta w adnotacji @EJB. Spowodowało to powiązanie dwóch klas między sobą. Jeżeli do tego celu nie wykorzystalibyśmy wstrzykiwania zależności, proces ten wyglądałby następująco:
+
+
+
+[source, java]
+----          	
+			InitialContext ctx = new InitialContext();SampleServiceLocal sampleService =(SampleServiceLocal) ctx.lookup("earName/ejbName/local");            
+----   
+
+Jak już wspomniałem, wraz z pojawieniem się specyfikacji EJB 3.1, podjęto próbę ujednolicenia sposobu rejestracji obiektów w drzewie nazw. Wszystkie elementy są rejestrowane w tzw. globalnym drzewie JNDI pod kluczem java:global/nazwaAplikacji/nazwaModułu/nazwaSerwisu
+
+
+		
+=== Adnotacja @Stateless
+
+Omówiwszy dokładnie proces wstrzykiwania zależności oraz drzewa JNDI, posiadamy niezbędną wiedzę teoretyczną aby powrócić do definiowania komponentów EJB. Wspomniany już serwlet, poprzez adnotację @EJB został powiązany z komponentem bezstanowym, oznaczonym jako @Stateless. Użycie adnotacji @Stateless informuje kontener że ten obiekt jest bezstanowym komponentem EJB i jako taki ma być zarejestrowany w drzewie, dodany do puli, a jedyny interfejs który implementuje – jest jego definicją jego metod biznesowych. W przypadku domyślnej konfiguracji serwera i przy względnym braku skomplikowania samej aplikacji - jest to wystarczające. Jednakże adnotacja posiada także szereg parametrów wymagających umówienia. 
+
+Adnotacja @Stateless może być wykorzystana tylko i wyłącznie w odniesieniu do klasy (nie można nią oznaczyć metody ani pól klasy) i przyjmuje trzy opcjonalne parametry:
+
+* _name_: umożliwia wpłynięcie na nazwę pod jaką komponent będzie używany (ejbName). Jest to szczególnie przydatne, gdy np. dwa komponenty implementują ten sam interfejs biznesowy (w obrębie jednego modułu). Rozróżnia się je poprzez nadanie odpowiednich nazw. 
+* _mappedName_: parametr jest definiowany jako meta dana, zależna od dostawcy serwera. W przypadku serwera JBoss umożliwia rejestrację komponentu EJB w drzewie JNDI po dodatkową nazwą. Domyślna nazwa używana przez kontener (earName/ejbName/local) pozostaje niezmienna.
+* _description_: dla celów dokumentacyjnych
+
+W ogromniej większości przypadków komponenty będą deklarowanie poprzez użycie @Stateless bez jakichkolwiek parametrów. W specyficznych przypadkach zdarza się wykorzystać atrybut _name_, przez co zmienia się sposób w jaki komponent bezstanowy zostanie zdefiniowany, co bezpośrednio przekłada się na możliwości jego wywołania. Jak już wspomniałem, atrybut name jest szczególnie przydatny, gdy w obrębie jednego modułu dwie klasy implementują ten sam interfejs biznesowy. Gdyby poprzestać tylko i wyłącznie na adnotacji @Stateless, kontener ma prawo zacząć zachowywać się w sposób nieprzewidywany: aplikacja może nie zostać uruchomiona i wzniesiony zostanie wyjątek o ponownej próbie rejestracji komponentu o tej samej nazwie, bądź też zgłoszony zostanie błąd w momencie wiązania komponentów, gdyż kontener nie będzie wiedział która implementacja ma być wykorzystana. Co gorsza, możliwa jest także sytuacja że żaden błąd nie zostanie zgłoszony i w momencie wstrzykiwania zależności wykorzystana zostanie implementacja która jako pierwsza została zarejestrowana w drzewie JNDI (albo jako ostatnia). Jest to obszar niezdefiniowany przez specyfikację, jest to zachowanie specyficzne i zależy od dostawcy serwera aplikacji. Niemniej jednak, zawsze pojawi się problem przy pierwszej próbie wykorzystanie komponentu (albo w sposób jawny – zgłoszony przez kontener lub niejawny – w postaci trudnego do zidentyfikowania błędu). Jako że komponenty kojarzone są poprzez interfejsy biznesowe, obecność dwóch komponentów o tym samym interfejsie wprowadza konfuzję i kontener nie ma prawa wiedzieć która konkretnie implementacja ma być wykorzystana. Kontener oczekuje dokładnej referencji do komponentu, poprzez nazwę, którą definiujemy atrybutem _name_. Domyślnie, nazwa komponentu odpowiada nazwie klasy (getClass().getSimpleName()).
+
+
+		
+=== Adnotacja @EJB
+
+Jak widzieliśmy w przykładzie, adnotacja @EJB wystarcza do powiązania ze sobą dwóch komponentów i podobnie jak @Stateless, w ogromnej większości przypadków używana będzie bez parametrów - choć takowe posiada. Wspomniane w poprzednim przykładzie, wskazanie konkretnej implementacji komponentu odbywa się właśnie przy użyciu adnotacji @EJB i atrybutu beanName. Pozostałe parametry można podzielić na dwie grupy: atrybuty wykorzystywane gdy adnotacja @EJB dekoruje klasę oraz te który parametryzują wywołanie gdy dekorowana jest metoda lub atrybut. Możliwe parametry to:
+
+* w przypadku klasy
+** name - nazwa, pod którą zostanie umieszczona referencja pobieranego komponentu w kontekście JNDI 
+** beanInterface - interfejs (zdalny bądź lokalny) który zostanie wykorzystany jako referencja
+
+* w przypadku metody i/lub atrybuty klasy
+** beanName - nazwa istniejącego komponentu który ma zostać pobrany
+** mappedName - podobnie jak w przypadku @Stateless, interpretacja parametru zależna jest od dostawcy serwera
+
+
+
+		
+=== Adnotacja @Resource
+
+Adnotacje @EJB służą do deklarowania powiązań pomiędzy komponentami. Stosunkowo często, komponenty zależą nie tylko od siebie samych, ale wykorzystują zasoby dostarczane przez serwer aplikacji (np. źródło danych, kolejki). Odwołanie do tych zasobów następuję poprzez adnotację @Resource (użytą na poziomie atrybutu lub metody). Tej samej adnotacji można także użyć na poziomie klasy - umożliwia to zadeklarowanie zasobu, podobnie jak to miało miejsce w przypadku adnotacji @EJB. Powtarzające się atrybuty oznaczają to samo co w przypadku @EJB i @Stateless. Z dodatkowych parametrów, wymagających omówienia, należy wymienić:
+
+* type - obiekt Class reprezentujący typ zasobu, np. DataSource
+* authenticationType - definiuje, czy za uwierzytelnianie podczas dostępu do zasobu odpowiedzialny jest kontener, czy komponent
+* shareable - wskazuje, czy dany zasób może być współdzielony przez więcej komponentów
+
+Adnotacja @Resource (co warto podkreślić) nie jest specyficzna dla EJB i pochodzi z Java SE - znajduje się w pakiecie javax.annotation.
+
+W znakomitej większości przypadków adnotacje @EJB i @Resource są używane na poziomie atrybutu klasy i/lub metody. Jest to najłatwiejszy sposób na definiowanie relacji pomiędzy klasami. Używanie tych atrybutów na poziomie klasy jest szczególnie przydatne, gdy: 
+
+* Istnieje potrzeba zdefiniowania zależności dla klas niezarządzanych przez kontener,
+* Zależności rozwiązywane są wewnątrz klasy, poprzez jawne odwołanie się do kontekstu (bez użycia wstrzykiwania zależności). Ma to często miejsce, gdy pragniemy wykorzystać istniejący komponent, niezgodnych z EJB3, a nie ma woli i czasu przepisania go. Jeżeli na poziomie klasy zadeklarujemy nazwę poprzez adnotację @_EJB_, to w dalszej kolejności, w ciele metody można odwołać się do komponentu bezpośrednio z drzewa JNDI po uprzednio zadeklarowanej nazwie.
+
+
+
+[source, java]
+----          	
+			@EJB(name = "someStrangeName", beanInterface = SampleServiceLocal.class)            
+----   
+
+
+
+[source, java]
+----          	
+			InitialContext ctx = new InitialContext();SampleServiceLocal sampleService =	(SampleServiceLocal) ctx.lookup("java:comp/env/someStrangeName");            
+----   
+
+
+		
+=== Deskryptor wdrożenia
+
+W dotychczasowych rozważaniach polegaliśmy tylko i wyłącznie na konfiguracji poprzez adnotacje. Jest to najprostsze i najszybsze rozwiązanie. Co więcej, jest także najłatwiejsze w utrzymaniu, gdyż np. kompilator Javy sprawdza czy niepopełnione zostały błędy (np. literówki) w nazwach parametrów bądź nazwach klas. Nie jest to jednak jedyna możliwość konfiguracji aplikacji JEE. Można skorzystać z deskryptorów wdrożenia, tj. plików konfiguracyjnych, opartych o język XML. 
+
+Ideą deskryptorów wdrożenia, było oddzielenie kodu aplikacji od środowiska, w którym aplikacja jest uruchamiana. Założony został wyraźny podział ról pomiędzy programistą i wdrożeniowcem. Ten pierwszy tworzył komponenty EJB, natomiast domeną wdrożeniowca było ich odpowiednie skonfigurowanie i osadzenie na serwerze aplikacji. W praktyce okazało się, że obie role są w zakresie obowiązków programisty. Co więcej, bardzo rzadko wykorzystywało się raz napisane komponenty EJB w innych środowiskach. Stawiało to pod znakiem zapytania sensowność rozdzielenia kodu od konfiguracji.
+
+Sytuacja zmieniła się wraz z wejściem w życie specyfikacji EJB3, która umożliwiła konfigurowanie aplikacji poprzez adnotacje. Dzięki temu, podstawowa konfiguracja aplikacji związana została na stałe z kodem. Dopiero w przypadku pojawienia się bardzo specyficznych potrzeb, jak uruchomianie komponentów w innym środowisku, pojawia się konieczność użycia deskryptorów wdrożenia. Zminimalizowało to ilość kodu XML potrzebnego do konfiguracji, a w wielu przypadkach deskryptory w ogóle nie są potrzebne.
+
+Deskryptor wdrożenia jest plikiem XML o nazwie ejb-jar.xml, zlokalizowanym w katalogu META-INF, archiwum z komponentami EJB. Jeżeli konfigurujemy aplikacje poprzez adnotacje to deskryptor wdrożenia w ogóle nie ma racji bytu. Jeżeli jednak taki plik istnieje, dane w nim wykorzystywane są do konfiguracji aplikacji. Zastosowane deskryptorów ma miejsce w przypadku gdy pragniemy zmienić konfigurację istniejącej aplikacji w momencie wdrożenia (informacje zawarte w deskryptorze nadpiszą konfigurację zawartą w adnotacjach) lub potrzebujemy utworzyć zarządzalny komponent EJB utworzony na podstawie istniejącej biblioteki bądź klasy POJO. 
+
+Przykładowy deskryptor wdrożenia wygląda następująco:
+
+
+
+[source, java]
+----          	
+			<?xml version="1.0" encoding="UTF-8"?><ejb-jar	xmlns="http://java.sun.com/xml/ns/javaee" 		xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"	xsi:schemaLocation="http://java.sun.com/xml/ns/javaee             
+----   
+
+http://java.sun.com/xml/ns/javaee/ejb-jar_3_0.xsd"
+
+[source, java]
+----          	
+			version="3.0"><enterprise-beans><session><ejb-name>PersonManagerService</ejb-name><ejb-class>            
+----   
+
+	pl.bnsit.ejb3.database.PersonManagerService	</ejb-class>
+
+[source, java]
+----          	
+			<session-type>Stateless</session-type></session></enterprise-beans></ejb-jar>            
+----   
+
+Jeżeli komponent posiada jakiekolwiek zależności to ich ‘wstrzyknięcie’ także musi być zadeklarowane w pliku ejb-jar.xml. Oczywiście, z powodzeniem możemy korzystać z już istniejących komponentów, usług i zasobów serwera – co będę się starał się pokazywać w kolejnych przykładach. 
+
+Należy jednak zaznaczyć, że konfiguracja aplikacji poprzez XML wymaga dobrego uzasadnienia. Utworzenie deskryptora wdrożenia wymaga więcej zachodu niż konfiguracja poprzez adnotację. Co więcej plik XML jest znacznie trudniejszy w utrzymaniu, nie jest wspierany przez narzędzia związane z szeroko pojętym _refactoringiem _(zmiany nazw klas i pakietów muszą być ręcznie nanoszone w deskryptorach XML). Mimo że konfiguracja aplikacji jest elastyczniejsza w momencie wytwarzania, po wdrożeniu ta elastyczność i tak znika; nikt nie odważy się na zmiany deskryptorów w środowisku produkcyjnym, bez dodatkowej fazy testów. Oznacza to że konfiguracja XML musi być wersjonowana i utrzymywana wraz z kodem źródłowym - z zachowaniem takiej samej staranności.
+
+Dodatkową wadą deskryptorów wdrożenia była obfitość rozszerzeń specyficznych dla serwera aplikacji. Dodatkowo zmniejszało to możliwości przenoszenia kodu. Dlatego też po szczegóły nt. deskryptorów wdrożenia odsyłam do dokumentacji dostawcy serwera, a dalszej części szkolenia będę się skupiał na konfiguracji poprzez konwencje i adnotacje. 
+
+
+		
+=== Komponenty stanowe
+
+Niejako z premedytacją, w dotychczasowych opisach EJB nie poruszałem kwestii komponentów stanowych. Teraz, rozumiejąc jak działają komponenty bezstanowe oraz w jaki sposób można je na wszystkie możliwe sposoby definiować, można pochylić się nad komponentami stanowymi. 	Ich zastosowanie oraz cykl życia znacząco odbiega od komponentów bezstanowych. Przede wszystkim komponent stanowy jest związany (przyporządkowany) do konkretnego klienta. Taki komponent może gromadzić różne informacje pomiędzy kolejnymi wywołaniami metod biznesowych. 
+
+Komponent stanowy nie jest przekazywany do puli, raz utworzony i przypisany klientowi - pozostaje z nim związany przez cały cykl życia. 
+
+
+
+NOTE:: Insert original images 
+
+
+
+
+Aby zoptymalizować i zwiększyć wydajność kontenera, komponenty sesyjne podlegają pasywacji. W sytuacjach gdy kontener zbliża się do limitu dostępnych instancji, komponenty bezstanowe zawarte w puli są niszczone. Jednakże taka optymalizacja nie jest możliwa dla komponentów stanowych – one podlegają procesowi pasywacji. 
+
+Dodatkowo, istnieją dwie specyficzne dla komponentów adnotacje związane z cyklem życia: @_PrePassivate_ i @_PostActivate_. Umożliwiają one odebranie i obsługę sygnałów o zachodzących w kontenerze zdarzeniach. Metod tych używa się w reguły do obsługi (otwierania bądź poprawnego zamykania) zasobów z których stanowy komponent korzysta. 
+
+Komponenty stanowe używane są najczęściej w sytuacjach, gdy klientem dla aplikacji EJB3 jest tzw. gruby klient, gdzie z założenia jedno połączenie oznacza pojedynczego użytkownika. Komponenty stanowe używane są także do obsługi sesji HTTP w przypadku aplikacji webowych. Wymaga to wtedy połączenia sesji HTTP z sesją EJB (np. poprzez przetrzymywanie referencji do komponentu stanowego w sesji HTTP). 
+
+	
+
+
+
+== Moduł 3: Java Persistence API
+JPA, czyli Java Persistence API, to standard mapowania obiektowo relacyjnego obowiązujący w Javie. Został on zatwierdzony przy okazji specyfikacji EJB3 i mimo że jest wykorzystywany w JEE, może także funkcjonować w pełni niezależnie (bez potrzeby kontenera EJB). JPA zastąpiło znane z EJB 2.1 CMP (ang. Container Managed Persistence). 
+
+Mapowanie obiektowo relacyjne (ORM – ang. _Object Relational Mapping_) umożliwia programiście operowanie na obiektach (encjach), które można zapisać (utrwalić) w relacyjnych bazach danych. Poprzez oznaczenie klas adnotacjami specyficznymi dla JPA, kontener uzyskuje możliwość zarządzania encjami (zapisu, odczytu z bazy danych). Z punktu widzenie programisty operacje na obiektach nie różnią się niczym od pracy z wszelkimi innymi obiektami Javy, obiekty nie muszą implementować specyficznych dla JPA interfejsów. Tworzenie nowych obiektów odbywa się poprzez słowo kluczowe _new_ i dopiero w momencie skojarzenia obiektu z kontekstem (poprzez obiekt EntityManagera) następuje zapis do bazy danych.
+
+Istnieje kilka implementacji JPA, dostarczanych przez różne serwery aplikacji: Hibernate, OpenJPA, TopLink, Kodo. Każda z tych bibliotek może działać samodzielnie poza serwerem aplikacji. Wszystkie dostarczają także pewnych, własnych rozszerzeń (spoza pakietu javax.persistence.*). Ze względu na to że używanym w przykładach jest serwer JBoss, przykłady bazują na Hibernate – niemniej jednak, nie wykraczają poza funkcjonalności oferowane przez specyfikację JPA.
+
+
+		
+=== Wstęp do persystencji
+
+Jak już wspomniałem, JPA nie wymaga implementacji jakichkolwiek dodatkowych interfejsów i w żaden sposób nie narzuca ‘przywiązania’ obiektu do frameworka. Encje to proste obiekty Javy (POJO – ang. _Plain Old Java Object_), zawierające jedynie pola oraz odpowiadające im modyfikatory (tzw. gettery i settery). Klasa staje się encją w momencie oznaczenia jej adnotacją @Entity. Dodatkowo, każdy obiekt bazodanowy musi powiadać swój unikalny identyfikator - atrybut oznaczony adnotacją @Id. Te dwie adnotacje są wystarczające aby obiekt mógł zostać zapisany oraz pobrany z bazy danych. Wszystkie pola są w automatyczny sposób mapowane na kolumny w bazie danych. Oczywiście, programiści mają wpływ na to jak kolumny będą nazwane, w której tabeli - w przypadku gdy nie zostanie to explicite zdefiniowane, przyjmowane są pewne konwencje (które zostaną omówione szczegółowo w dalszej części szkolenia). 
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Person implements Serializable {@Id            
+----   
+
+private long personId;private String firstName;
+
+[source, java]
+----          	
+			private String lastName;private String nickName;//.. getters and setters}            
+----   
+
+Encja może zawierać atrybuty dowolnych typów, z zastrzeżeniem iż tylko typy proste mapowane są na odpowiadające im struktury bazodanowe przez Hibernate’a w sposób automatyczny. W JPA możemy rozróżnić podstawowe typy danych, które nie wymagają dodatkowych deklaracji, implementacja JPA samodzielnie mapuje je na bazę danych. Dotyczy to następujących typów danych: 
+
+* typy prymitywne lub ich typy opakowujące
+* java.lang.String 
+* java.math.BigInteger 
+* java.math.BigDecimal 
+* java.util.Date
+* java.util.Calendar 	
+* java.sql.Date 	
+* java.sql.Time 	
+* java.sql.Timestamp 	
+* byte[], Byte[] 	
+* char[], Character[] 	
+* enum
+* dowolny typ implementujący Serializable
+
+Oczywiście możemy używać dowolnych innych struktur, w tym własnych, zdefiniowanych wewnątrz aplikacji klas, lecz wymaga to dodatkowych zabiegów, zdefiniowania relacji pomiędzy obiektami, które wyjaśnione zostaną za chwilę. Póki co podstawowe typy w zupełności wystarczą w prezentowanych przykładach.
+
+
+		
+=== Konfiguracja źródła danych
+
+Samo utworzenie encji to za jedno, a konfiguracja warstwy persystencji to osobna kwestia. Zdefiniowanie klas nie oznacza że będą one zapisywane w bazie danych. Dodatkowo, należy wskazać i skonfigurować bazę danych, która będzie używana. W używanym przez nas serwerze aplikacji JBoss domyślna baza danych zdefiniowana jest w pliku hsqldb-ds.xml i zarejestrowana jest w drzewie JNDI pod nazwą _java:DefaultDS_. Aby z niej skorzystać, w pliku persistence.xml (w katalogu META-INF naszego projektu) musimy w odpowiedni sposób wskazać bazę danych. Minimalna konfiguracja wygląda następująco:
+
+
+
+[source, java]
+----          	
+			<?xml version="1.0" encoding="UTF-8"?><persistence xmlns="http://java.sun.com/xml/ns/persistence"xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"xsi:schemaLocation="http://java.sun.com/xml/ns/persistence             
+----   
+
+	http://java.sun.com/xml/ns/persistence/persistence_2_0.xsd"
+
+[source, java]
+----          	
+			version="2.0"><persistence-unit name="sample"><jta-data-source>java:/DefaultDS</jta-data-source><properties><property name="hibernate.dialect"             
+----   
+
+	value="org.hibernate.dialect.HSQLDialect" />
+
+[source, java]
+----          	
+			<property name="hibernate.hbm2ddl.auto" value="create-drop" /><property name="hibernate.show_sql" value="true" /></properties></persistence-unit></persistence>            
+----   
+
+Niezbędne elementy konfiguracyjne to określenie z której bazy korzystamy, poprzez podanie referencji do obiektu w drzewie JNDI w polu <jta-data-source />. Pozostałe dwie wartości konfiguracyjną są już specyficzne dla wykorzystywanej implementacji JPA (w tym przypadku Hibernate) i wskazują na typ bazy danych z której korzystamy (HSQLdb) oraz wybierają strategię zarządzania strukturą bazy danych (create-drop). Szczegółowa i dokładniejsza konfiguracja Hibernate’a zostanie omówiona później. Teraz można poprzestać na stwierdzeniu, że create-drop za każdym uruchomieniem i zamknięciem aplikacji usuwa istniejący schemat bazy i na podstawie encji tworzy go ponownie – sytuacja idealna podczas intensywnych prac z wykorzystaniem bazy danych, gdy z każdym uruchomieniem baza danych może być odświeżona. Sposób tworzenia schematu także zostanie dokładnie omówiony, póki co skorzystajmy z konwencji i pozwólmy kontenerowi działać po swojemu. 
+
+W momencie wdrożenia aplikacji na serwer widzimy w logach że ustawiania zadziałały:
+
+
+
+[source, java]
+----          	
+			08:18:16,203 INFO 	[org.jboss.jpa.deployment.PersistenceUnitDeployment] Starting persistence unit persistence.unit:unitName=SampleApplication.ear/SampleApplicationEJB.jar#sample08:18:16,203 INFO 	[org.hibernate.ejb.Ejb3Configuration] Processing PersistenceUnitInfo [	name: sample	...]08:18:16,203 INFO 	[org.hibernate.cfg.AnnotationBinder] Binding entity from annotated class: pl.bnsit.ejb3.entity.Person            
+----   
+
+Skoro kontener świadomy jest już istnienia bazy danych oraz encji - spróbujmy zapisać obiekt do bazy danych. W tym celu musimy skorzystać z EntityManagera; obiektu dostarczanego przez kontener, zarządzającego cyklem encji. Metoda zapisująca wygląda następująco: 
+
+
+
+[source, java]
+----          	
+			@Statelesspublic class PersonManagerService implements PersonManagerServiceLocal {@PersistenceContext(name="sample")EntityManager entityManager;@Interceptors(AuditingInterceptor.class)public Person addPerson(Person person) {entityManager.persist(person);entityManager.flush();entityManager.refresh(person);return person;}            
+----   
+
+
+
+[source, java]
+----          	
+			}            
+----   
+
+Zauważmy, że w żaden sposób nie definiowaliśmy transakcji - wszystkim zajął się kontener. Domyślna wartość REQUIRED oznacza, że w momencie wywołania metody została utworzona nowa transakcja i kontener automatycznie wykonał _commit_ natychmiast po zakończeniu metody. Tym sposobem, udało się zapisać się zapisać pierwszy wiersz do bazy danych. 
+
+Warto wspomnieć o pewnym praktycznym aspekcie związanym z mapowaniem bazy danych. Bardzo często zupełnie inna instancja bazy wykorzystywana jest w środowisku produkcyjnym, testowym, a zupełnie inna podczas prac programistycznych. Zależnie od lokalnej konfiguracji serwera aplikacji, można z powodzeniem użyć deskryptora wdrożenia, celem skonfigurowania dostępu do bazy danych. Wstrzyknięcie referencji do JPA i bazy danych poprzez plik ejb-jar.xml wyglądałoby następująco:
+
+
+
+[source, java]
+----          	
+			<?xml version="1.0" encoding="UTF-8"?><ejb-jar             
+----   
+
+xmlns="http://java.sun.com/xml/ns/javaee" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+
+[source, java]
+----          	
+			xsi:schemaLocation="http://java.sun.com/xml/ns/javaee             
+----   
+
+	http://java.sun.com/xml/ns/javaee/ejb-jar_3_0.xsd"
+
+[source, java]
+----          	
+			version="3.0"><enterprise-beans><session><ejb-name>PersonManagerService</ejb-name><ejb-class>            
+----   
+
+	pl.bnsit.ejb3.database.PersonManagerService	</ejb-class>
+
+[source, java]
+----          	
+			<session-type>Stateless</session-type><persistence-context-ref><persistence-context-ref-name>            
+----   
+
+	persistence/xyz	</persistence-context-ref-name>
+
+[source, java]
+----          	
+			<persistence-unit-name>sample</persistence-unit-name><persistence-context-type>            
+----   
+
+	Transaction	</persistence-context-type>
+
+[source, java]
+----          	
+			<injection-target><injection-target-class>            
+----   
+
+	pl.bnsit.ejb3.database.PersonManagerService	</injection-target-class>
+
+[source, java]
+----          	
+			<injection-target-name>            
+----   
+
+	entityManager	</injection-target-name>
+
+[source, java]
+----          	
+			</injection-target></persistence-context-ref></session></enterprise-beans></ejb-jar>            
+----   
+
+
+		
+=== EntityManager
+
+Wszystkie operacje ‘bazodanowe’ odbywały się za pośrednictwem EntityManagera - co widać w poprzednim przykładzie. EntityManager dostarcza szeregu metod do pracy z obiektami persystentnymi a także zarządza cyklem życia wszystkich encji. Cykl życia encji może zostać podzielony na 4 etapy:
+
+
+
+NOTE:: Insert original images 
+
+
+
+
+Transformacje pomiędzy stanami następują w wyniku wywołania poszczególnych metod managera. Zacznijmy od metod użytych w poprzednim przykładzie:
+
+* _persist_() - powoduje dodanie encji do kontekstu utrwalania. Wstawienie odpowiednich danych do bazy następuje w momencie opróżniania bufora
+* _flush_() - metoda wymusza synchronizację z bazą danych. Obiekty zarządzane przez kontener (dodane do kontekstu, znajdujące się w buforze) zapisane są w bazie danych. 
+* _find_() - pobiera encje z kontekstu na podstawie jej identyfikatora. W ogólnym przypadku, powoduje to pobranie danych wprost z bazy danych oraz pobrania powiązanych obiektów. Jeżeli element nie zostanie znaleziony metoda zwraca _null_.
+* _getReference_() - oferuje analogiczną funkcjonalność jak _find_() z tym że nie pobiera powiązanych encji (o relacjach będzie dalej). Jeśli encja nie zostanie znaleziona zwracany jest wyjątek: _EntityNotFoundException_
+* _Object merge(entity) -_ przyłącza odłączoną encje do kontekstu. _EntityManager_ rozpoznaje encje po wartości identyfikatora (adnotacja @Id). Jeśli element nie jest powiązany z kontekstem, to _EntityManager_ stworzy zarządzaną kopie parametru encji i ta kopia zostanie zwrócona przez metodę _merge_(). Jeśli dołączana encja istnieje w kontekście, to jej zawartość zostanie skopiowana do zarządzanej encji. Encja ta zostanie zwrócona przez metodę merge_()_
+* _delete_() - usuwa encję z kontekstu. Komponent zostaje odłączony od kontekstu i usunięty z bazy danych w momencie opróżnienia bufora _EntityManager’a_
+* _refresh_() - nadpisuje zawartość encji stanem z bazy danych
+* contains() - sprawdza, czy encja jest zarządzana
+* clear() - odłącza od kontekstu utrwalania wszystkie zarządzane encje
+
+
+		
+=== Konfiguracja Hibernate
+
+Podstawowa konfiguracja źródła danych została przedstawione na początku modułu. Tak jak zostało pokazane, odbywa sie ona poprzez dodanie pliku _persistence.xml_ w katalogu META-INF/. Minimalna konfiguracja wymaga tylko i wyłącznie nazwy źródła danych, zarejestrowanego w drzewie JNDI. Kontener samodzielnie wyszuka wszystkie klasy oznaczone @_javax.persistence.Entity_ i włączy je do kontekstu. 
+
+Przy pomocy sekcji <property> programista może wpływać na konfigurację JPA. Najczęściej używanymi parametrami są:
+
+* _hibernate.dialect_ - wskazuje dialekt SQL, w którym będą generowane zapytania. Hibernate z powodzeniem współpracuje z szeregiem baz danych, takich jak Oracle, MySQL, MsSQL itd. Każda z tych baz może wymagać konstruowania zapytań w różny sposób i właśnie poprzez dialekt określamy bazę danych z której korzysta aplikacja.
+* _hibernate.show_sql_ - pokazuje kwerendy SQL generowane przez Hibernate’a
+* _hibernate.format_sql_ - czytelnie formatuje wygenerowane kwerendy
+* _hibernate.generate_statistics_ - generuje statystyki
+* _hibernate.use_sql_comments_ - komentuje wygenerowane kwerendy
+* _hibernate.hbm2ddl.auto_ - wskazuje sposób, jaki Hibernate będzie traktował schemat bazy danych. Dostępne wartości to: _validate_ (Hibernate sprawdcza czy schemat i definicje encji są zgodne), _update_ (Hibernate uaktualni schemat bazy danych i dopasuje do definicji encji), _create_ (schemat danych zostanie utworzony przez Hibernate’a), 	_create-drop_ (schemat danych zostanie utworzony przy tworzeniu sesji, a następnie usunięty po jej zakończeniu). Jeżeli parametr zostanie całkowicie pominięty – baza danych zostanie w stanie nienaruszonym.
+
+
+		
+=== Mapowanie obiektów na strukturę bazy danych
+
+W dotychczasowych rozważaniach nie przywiązywaliśmy wagi do sposobu odzwierciedlenia obiektów w bazie danych, w jaki sposób relacje między obiektami w bezpośredni sposób są przenoszone na bazę danych. Wszystkie operacje bazowały na konwencjach dostarczonych przez kontener, zupełnie pomijając kwestie odwzorowania tych relacji w języku SQL. Przyjęliśmy, że tak jak robi Hibernate - jest dobrze. Niemniej jednak, jako programiści, możemy mieć znaczący wpływ, w jaki sposób tworzone relację odwzorowywane są w fizycznej strukturze bazy danych. W domyślnym, bazującym na konwencjach przypadku, kontener samodzielnie nadaje nazwy tabel, pól w bazie danych. Nazwa tabeli oraz kolumn tworzone są na podstawie nazwy klasy oraz jej atrybutów. 
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Address {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long id;private String addressLine1;private String zipCode;private String city;	private String country;            
+----   
+
+
+
+[source, java]
+----          	
+			//...}            
+----   
+
+
+
+NOTE:: Insert original images 
+
+
+Oczywiście JPA pozwala wpłynąć na nazewnictwo tabel i kolumn. Do tego wykorzystywane są adnotacje @_Table_ i @_Column_
+
+
+
+[source, java]
+----          	
+			@Entity@Table(name = "ADDRESS_TB")public class Address {            
+----   
+
+
+
+[source, java]
+----          	
+			@Id@Column(name = "ADDRESS_ID")private long id;@Column(name = "ADDRESS_LINE_1")private String addressLine1;@Column(name = "ZIP_CODE")private String zipCode;@Column(name = "CITY")private String city;@Column(name = "COUNTRY")	private String country;            
+----   
+
+
+
+[source, java]
+----          	
+			//...}            
+----   
+
+Poza zaprezentowanymi atrybutami obie z wymienionych adnotacji posiadają dodatkowe parametry. I tak dla @_Table_ można dodatkowo określić:
+
+* name - nazwę tabeli
+* schema - nazwę schematu
+* catalog - nazwę katalogu, w którym położona jest tabela
+* uniqueConstraints - wskazanie unikalnych kolumn w obrębie tabeli
+
+Z kolei @Column umożliwia:
+
+* name - określenie nazwy kolumny w tabeli
+* insertable - określa, czy do kolumny mogą być wstawiane wartości
+* nullable - określa, czy kolumna możne zawierać wartości null
+* updatable - określa, czy wartości w kolumnie mogą być aktualizowane
+* length - dla kolumn typu znakowego określa maksymalną długość ciągu znaków
+* precision - dla kolumn typu zmiennoprzecinkowego określa precyzję przechowywanych wartości
+* scale - wskazuje dokładność dla wartości zmiennoprzecinkowych
+* unique - określa, czy na kolumnę ma być nałożone ograniczenie unikalności wartości
+* table - nazwa tabeli, z której pochodzi kolumna; używany, gdy klasa mapowana jest do wielu tabel
+* columnDefinition - fragment natywnego zapytania SQL określający dodakowe atrybuty definicję kolumny, np.: wskazanie typu
+
+
+		
+=== Mapowanie wielu obiektów na jedną tabelę
+
+Stosunkowo często zdarza się, że fizyczna struktura bazy danych optymalizowana jest np. pod kątem transakcji niebędących domeną aplikacji. Natomiast wytwarzana aplikacja JEE jest pewnym przyjaznym dla użytkownika widokiem na dane. Okazuje się wtedy że struktura tabel jest daleka od obiektowego ideału (np. występuje w postaci zdenormalizowanej płaskiej struktury). W takich sytuacjach używa się wielu obiektów mapujących jeden fizyczny widok bazodanowy, za pomocą adnotacji @_Embeddable_. 
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Person {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long personId;@Embeddedprivate Name name;//..}            
+----   
+
+
+
+
+
+[source, java]
+----          	
+			@Embeddablepublic class Name {            
+----   
+
+
+
+[source, java]
+----          	
+			private String firstName;private String lastName;private String nickName;//..}            
+----   
+
+
+
+NOTE:: Insert original images 
+
+
+
+		
+=== Relacje
+
+Wspomniany powyżej EntityManager może zarządzać nie tylko pojedynczą encją (jak w powyższym przykładzie) ale całym drzewem obiektów wraz ze wszystkimi zależnościami. JPA umożliwia bardzo elastyczne mapowanie zależności między obiektami na bazę danych. Odbywa się to poprzez użycie jednej z czterech adnotacji, które opisują zależność: @_OneToOne_, @_OneToMany_, @_ManyToOne_ oraz @_ManyToMany_. 
+
+Jeżeli zdefiniowana przez nas encja zawiera w sobie inny obiekt (niebędący typem prymitywnym ani żadnym z wymienionych wcześniej typów prostych), wymusza to odpowiednie zdefiniowanie relacji pomiędzy obiektami. Gdy nie zostanie to zrobione, Hibernate zwróci błąd: MappingException: 
+
+
+
+[source, java]
+----          	
+			org.hibernate.MappingException: Could not determine type for: pl.bnsit.ejb3.entity.Address, at table: PERSON_TB, for columns: [org.hibernate.mapping.Column(address)]            
+----   
+
+Relację wprowadzamy poprzez oznaczenie atrybutu odpowiednią adnotacją. Dla relacji jeden do jednego jest to @_OneToOne_. 
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Address {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long addressId;private String addressLine1;private String zipCode;private String city;	private String country;//..}            
+----   
+
+
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Person {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long personId;private String firstName;private String lastName;private String nickName;@OneToOneprivate Address address;//..}            
+----   
+
+
+
+NOTE:: Insert original images 
+
+
+Równie często obiekty są w relacji jeden do wiele, co może wyglądać następująco:
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Person {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long personId;private String firstName;private String lastName;private String nickName;@OneToManyprivate List<Phone> phones;//..}            
+----   
+
+
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Phone {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long phoneId;private String number;private String extension;//..}            
+----   
+
+
+
+NOTE:: Insert original images 
+
+
+
+
+Ciekawostką może być dodanie tabeli łączącej encje (Person_Phone). Jest to element dodany domyślnie przez Hibernate’a, który przechowuje mapowania kluczy pomiędzy encjami. Poprzez atrybuty adnotacji relacyjnych (@OneToOne, @OneToMany) możemy w znaczący sposób wpływać na kształt bazy danych - ale o tym za chwilę.
+
+
+		
+=== Kaskady i pobieranie danych ‘na żądanie’
+
+Nim przejdziemy do szczegółowego opisu mapowania relacji obiektowych na fizyczną strukturę bazy, omówię jedne z istotniejszych parametrów konfiguracyjnych adnotacji opisujących relacje: _FetchType_ i _CascadeType_. Oczywiście dostępne są także inne atrybuty, to jednak wymienione dwa parametry bezpośrednio określają w jaki sposób encje pobierane są z bazy danych. 
+
+Atrybut _fetch_ różnicuje sposób ładowania powiązanych encji z bazy danych. Umożliwia pobranie całego drzewa zależności w momencie pierwszego dostępu do korzenia (pierwszego obiektu) lub pobieranie obiektów będących w relacji dopiero w momencie odwołania się do nich. Możliwe są dwa atrybuty: 
+
+* FetchType.LAZY - ładowanie opóźnione 
+* FetchType.EAGER - wszystkie powiązane obiekty będą pobrane natychmiast. 
+
+Analogiczną funkcjonalnością, ale działająca podczas zapisu danych jest określenia kaskadowości. Atrybut _cascade_ określa sposób w jaki traktowane będą powiązane encje w momencie wywołania jednej z metod: _persist_(), _merge_(), _remove_(), _refresh_(). Możemy rozróżnić następujące zachowania:
+
+* CascadeType.PERSIST - w przypadku zapisu obiektu nadrzędnego, zapisane zostaną także encje zależne
+* CascadeType.MERGE - jeżeli właściciel relacji zostanie dołączony do kontekstu, to przyłączone zostaną także encje zależne. Jeżeli któryś z obiektów nie był zarządzany - zostanie także utrwalony.
+* CascadeType.REFRESH - jeżeli rodzic relacji zostanie odtworzony z bazy danych, stanie się to również z obiektami zależnymi
+* CascadeType.REMOVE - jeżeli usunięty będzie rodzic (właściciel relacji), usunięte zostaną także encje zależne
+* CascadeType.ALL - wszystkie powyższe
+
+Kaskadowość i opóźnione ładowanie rodzi także pewne niebezpieczeństwa. Stosunkowo łatwo stracić panowanie nad kaskadowością, co może powodować trudne do zdiagnozowania defekty. Z kolei opóźnione ładowanie może prowadzić do N+1 select problem, czy zwiększenie ilości zapytań do bazy danych (co może negatywnie wpłynąć na wydajność rozwiązania). 
+
+
+		
+=== Mapowanie relacji
+
+W poprzedniej części wprowadziłem pojęcie relacji pomiędzy obiektami. Temat jest dość obszerny i teraz go rozwinę. Poza samym oznaczeniem relacji, możemy w dokładny sposób wpływać na odzwierciedlenie jej w strukturze bazy danych. Odbywa się to poprzez szereg adnotacji, które teraz po kolei omówię.
+
+Jeden do jednegoJak pokazałem w poprzedniej części, użycie adnotacji @OneToOne powoduje dodanie w tabeli kolumny o nazwie “[nazwa pola]_[nazwa klucza z tabeli mapowanej]”. Aby bezpośrednio wskazać kolumnę złączenia, używamy adnotacji @JoinColumn
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Person {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long personId;private String firstName;private String lastName;private String nickName;@OneToOne@JoinColumn(name="ADDRESS_ID")private Address address;//..}            
+----   
+
+
+
+NOTE:: Insert original images 
+
+
+Do złączenia używany jest główny klucz tabeli ADDRESS, który staje się kluczem obcym w tabeli PERSON. 
+
+Relacja jeden do jednego może być także dwukierunkowa. Jeżeli encji po drugiej stronie relacji dodamy pole oznaczone @OneToOne domyślna strategia zostanie zastosowana.
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Address {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long addressId;private String addressLine1;private String zipCode;private String city;	private String country;@OneToOneprivate Person person;//..}            
+----   
+
+
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Person {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long personId;private String firstName;private String lastName;private String nickName;@OneToOneprivate Address address;//..}            
+----   
+
+
+
+NOTE:: Insert original images 
+
+
+Jednakże, aby zminimalizować duplikację danych, możemy wybrać któryś z obiektów, jako nadrzędny w relacji i skorzystać z klucz obcego zawartego w tamtej tabeli. Użycie atrybutu _mappedBy_ oznacza że szczegóły relacji zawarte są w encji Person. Wprowadza to relację nadrzędności i oznacza że Person.setAddress() zmienia relację, natomiast Addres.setPerson() nie spowoduje jej zmiany. Warto także zaznaczyć, że to programista jest odpowiedzialny za łączenie obiektów ze sobą (nie dzieje się to w sposób magiczny ani automatyczny). 
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Address {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long addressId;private String addressLine1;private String zipCode;private String city;	private String country;@OneToOne(mappedBy = "address")private Person person;//..}            
+----   
+
+
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Person {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long personId;private String firstName;private String lastName;private String nickName;@OneToOneprivate Address address;//..}            
+----   
+
+
+
+NOTE:: Insert original images 
+
+
+Wiele do jednegoMapowanie wiele do jednego wygląda podobnie jak do jeden do jednego. Z tym że klucz relacji przechowywany jest w encji podrzędnej (po stronie wiele). 
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Phone {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long phoneId;private String number;private String extension;            
+----   
+
+
+
+[source, java]
+----          	
+			@ManyToOneprivate Person person;//..}            
+----   
+
+
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Person {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long personId;private String firstName;private String lastName;private String nickName;//..}            
+----   
+
+
+
+NOTE:: Insert original images 
+
+
+Zmiany nazw kolumn mapujących osiągamy w analogiczny sposób jak w relacjach jeden do jeden, poprzez dodanie adnotacji @_JoinColumn_.
+
+Jeden do wieluJak już mogliśmy zauważyć w pierwszym przykładzie relacji jeden do wielu, domyślnie jest ona mapowana za pomocą zewnętrznej tabeli o nazwie „[encja_narzędna]_[encja_podrzędna]”. Tabela ta zawiera klucze do obu łączonych klas.
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Person {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long personId;private String firstName;private String lastName;private String nickName;@OneToManyprivate List<Phone> phones;//..}            
+----   
+
+
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Phone {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long phoneId;private String number;private String extension;//..}            
+----   
+
+
+
+NOTE:: Insert original images 
+
+
+
+
+Trudno nie oprzeć się wrażeniu że nie jest to ani uniwersalne ani specjalnie eleganckie. Wpływ na to w jaki sposób relacja zostanie odzwierciedlona na bazie danych mamy poprzez adnotację @JoinTable, która umożliwia dowolne nazwanie tablicy łączącej. Dodatkowo za pomocą joinColumns oraz inverseJoinColumns umożliwiają dowolne nazwanie kolumn łączących
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Person {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long personId;            
+----   
+
+
+
+[source, java]
+----          	
+			@OneToMany@JoinTable(name = "PERSON_CONTACT_DATA", 	joinColumns =	@JoinColumn(name="PERSON_ID"), 	inverseJoinColumns =	 	@JoinColumn(name="PHONE_ID"))private Collection<Phone> phones;//..}            
+----   
+
+
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Phone {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long phoneId;private String number;private String extension;//..}            
+----   
+
+
+
+NOTE:: Insert original images 
+
+
+
+
+Jak nietrudno zauważyć relacja jeden do wiele jest odwrotnością relacji wiele do jednego. Jeżeli zatem użyjemy obu tych relacji jednocześnie - uzyskujemy relację dwukierunkową. W takiej sytuacji, jeżeli wybierzemy którąś z encji jako nadrzędną, znika konieczność tworzenia tabeli pośredniczącej. 
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Person {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long personId;            
+----   
+
+
+
+[source, java]
+----          	
+			@OneToMany(cascade=CascadeType.ALL, mappedBy="person")private Collection<Phone> phones;//..}            
+----   
+
+
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Phone {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long phoneId;private String number;private String extension;            
+----   
+
+
+
+[source, java]
+----          	
+			@ManyToOne@JoinColumn(name="PERSON_ID")private Person person;//..}            
+----   
+
+
+
+NOTE:: Insert original images 
+
+
+Wiele do wieluOstatnim typem relacji są relacje wiele do wiele. Pozwalają one ona współdzielić obiekty pomiędzy encjami. Mapowanie relacji tego typu zawsze odbywa się poprzez tabelę łączącą, której atrybuty mogą być konfigurowane przez @JoinTable (podobnie jak w przypadku relacji jeden do wiele). 
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Person {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long personId;@ManyToManyprivate Collection<Address> addresses;//..}            
+----   
+
+
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Address {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long addressId;//..}            
+----   
+
+
+
+NOTE:: Insert original images 
+
+
+
+
+Zmianę relacji na dwukierunkową uzyskujemy poprzez dodanie pola oznaczone @ManyToMany do encji Address. Jeżeli nie posłużymy się jakimkolwiek dodatkowym atrybutem, to Hibernate domyślnie utworzy dodatkową tabelę ADDRESS_PERSON - będącą odwrotnością jużistniejącej PERSON_ADDRESS. Aby uniknąć tej nadmiarowości, możemy podobnie jak w poprzednich przypadkach, wyznaczyć jedną z encji jako nadrzędną w relacji i wyznaczenie jej jako właściciela relacji. 
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Person {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long personId;@ManyToManyprivate Collection<Address> addresses;//..}            
+----   
+
+
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Address {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long addressId;@ManyToMany(mappedBy="addresses")            
+----   
+
+private Collection<Person> people;
+
+[source, java]
+----          	
+			//..}            
+----   
+
+
+
+NOTE:: Insert original images 
+
+
+
+
+
+		
+=== Klucze główne; proste i złożone
+
+Kolejną rzeczą wymagającą omówienia są oznaczenia kluczy i identyfikatorów encji. Aby Hibernate mógł zarządzać encjami, wymaga się wskazania który atrybut jest identyfikatorem encji (poprzez oznaczenie go adnotacją @Id). W dotychczasowych przykładach kluczem był prosty obiekt, którego typ odpowiada typom samodzielnie mapowanym przez JPA. Co więcej, we wszystkich przykładach, nadanie unikalnego identyfikatora leżało po stronie programisty. Nie jest to jednak konieczne, gdyż za pomocą adnotacji @_GeneratedValue_ możemy poinformować JPA, że generowaniem kluczy zajmuje się baza danych. W najprostszym przypadku, JPA samodzielnie decyduje o przyjętej strategii, na podstawie używanej bazy danych:
+
+
+
+[source, java]
+----          	
+			@Id@GeneratedValue(strategy=GenerationType.AUTO)private long id;            
+----   
+
+Inne wartości _GenerationType_ oznaczają: 
+
+* IDENTITY - wymusza na bazie danych używanie specjalnego typu danych przeznaczonego tylko dla kluczy głównych, 
+* SEQUENCE - oznacza korzystanie z mechanizmu sekwencji, o ile baza danych udostępnia taki mechanizm, 
+* TABLE - oznacza korzystanie będzie z dodatkowej tabeli, w celu wyznaczenia kolejnej wartości klucza,
+* AUTO - wartością domyślną, zgodna ze domyślną strategią dla wybranej bazy danych. Dla prostszych baz danych jak HSQLdb lub MySQL jest to np. oddzielna sekwencja dla każdej tabeli osobno. 
+
+W przypadku bardziej zaawansowanym, najczęściej decydujemy się na użycie sekwencji bazodanowej, które generuje klucze. Wtedy konfiguracja wygląda następująco:
+
+
+
+[source, java]
+----          	
+				@Id	@GeneratedValue(strategy=GenerationType.SEQUENCE, generator="nazwaGeneratora")	@SequenceGenerator(name="nazwaGeneratora",             
+----   
+
+	sequenceName="nazwaSekwencjiNaBazieDanych")
+
+[source, java]
+----          	
+				private long id;            
+----   
+
+Poza samą nazwą sekwencji, można także podać jej początkową wartość (poprzez parametr _initialValue_) oraz wartość o jaką kolejne wygenerowane elementy będą inkrementowane (parametr _allocationSize_). 
+
+Możliwy jest także klucz złożony; konieczne jest wtedy zdefiniowanie dedykowanej dla klucza klasy, zawierającej wszystkie pola klucza i powiązanie klasy klucza z pojedynczym atrybutem encji za pomocą adnotacji @_IdClass_ lub @_EmbeddedId_. Klasa klucza musi być oznaczona jako @_Embeddable_ i podobnie jak w przypadku innych obiektów połączonych w ten sposób - kolumny odpowiadające kluczowi złożonemu tworzone są w tabeli właściwej dla encji, która korzysta z tego klucza.
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Person {            
+----   
+
+
+
+[source, java]
+----          	
+			@EmbeddedIdprivate PersonId personId;//..}            
+----   
+
+
+
+
+
+[source, java]
+----          	
+			@Embeddablepublic class PersonId implements Serializable {            
+----   
+
+
+
+[source, java]
+----          	
+			private String personId;private String SSN;//..}            
+----   
+
+Analogiczne zachowanie można uzyskać używając adnotacji @_IdClass_. 
+
+
+
+[source, java]
+----          	
+			@Entity@IdClass(value=PersonId.class)public class Person {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate String personId;@Idprivate String SSN;//..}            
+----   
+
+
+
+[source, java]
+----          	
+			public class PersonId implements Serializable {private String personId;private String SSN;//..}            
+----   
+
+Istotną różnicą jest użycie adnotacji @_IdClass_ na poziomie klasy, a nie na poziomie atrybutu.
+
+
+		
+=== @Transient
+
+W dotychczasowych przykładach wszystkie atrybuty obiektu były mapowane na bazę danych. Nie jest to jednak koniecznie; obiekt może posiadać elementy które nie są mapowane (nie będą zapisane w bazie danych). Aby wykluczyć atrybut z mapowania wystarczy oznaczyć go adnotacją @_Transient_ - zostanie o zignorowany przez JPA. 
+
+
+		
+=== Lifecycle methods
+
+Encje także posiadają swój cykl życia (co zostało omówione przy okazji analizowania EntityManagera) i podobnie jak w przypadku komponentów EJB, kontener umożliwia zdefiniowania akcji uruchamianych przy okazji zaistnienia poszczególnych faz cyklu życia. Do wykonania dodatkowych operacji służą do tego adnotacje: @_PrePersist_, @_PostPersist_, @_PostLoad_, @_PreUpdate_, @_PostUpdate_, @_PreRemove_, @_PostRemove_. Udekorowane nimi metoda nie powinna deklarować jakichkolwiek argumentów, zwracać typ _void_ oraz nie deklarować jakichkolwiek wyjątków. Metody powiązane z cyklem życie, w połączeniu z adnotacją @Transient, umożliwiają przekształcenie prostej encji (POJO) w rzeczywisty obiekt domenowy PDO (ang. Persistent Domain Object). Posłużmy się przykładem:
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Address {            
+----   
+
+
+
+[source, java]
+----          	
+			@Idprivate long addressId;private String streetNamePrefix;private String streetName;private String buildingNumber;private String buildingFlatNumber;@Transientprivate String addressLine1;@PostLoadpublic void prepareAddressLine1() {this.addressLine1 = streetNamePrefix;this.addressLine1 += " " + streetName;this.addressLine1 += " " + buildingNumber;this.addressLine1 += "/" + buildingFlatNumber;}//..}            
+----   
+
+
+		
+=== JPQL
+
+Poza czysto obiektowym sposobem dostępu do obiektów zlokalizowanych na bazie danych, specyfikacja JPA oferuje JPQL (ang. _Java Persistence Query Languague_). Jest to język zbliżony do SQL’a - z tym że operuje w dziedzinie obiektów a nie tabel bazodanowych. Umożliwia to bardziej elastyczne podejście do pobierania danych z bazy (bardziej elastyczne niż metoda entityManager.find()). 
+
+
+
+[source, java]
+----          	
+			Query query = entityManager.createQuery("wyrażenie JPQL");Object single = query.getSingleResult();List list = query.getResultList();            
+----   
+
+Zapytania formułujemy w sposób analogiczny do zapytań SQL, z tą różnicą, że zamiast tabel używane są nazwy encji. Podobnie do języka SQL zapytania oferują duże możliwości łączenia, filtrowania i agregowania danych. Dla znanej z przykładów encji Person przykładowe użycie JPQL wygląda podobnie do języka SQL i podobnie jak tam, dodatkowe filtrowanie wprowadzamy przy użyciu słowa kluczowego where.
+
+W deklarowanym warunku można używać szeregu operatorów takich jak: 
+
+* operatory logiczne (równość, większy, mniejszy, różny od)
+* AND, OR, NOT
+* operatory matematyczne (plus, minus, iloczyn, iloraz, inkrementacja i dekrementacji)
+* . (kropka) - operator nawigacji. Jeżeli pobierany jest właściciel relacji to możemy tworzyć zależności od zagłębionych encji
+* LIKE; dopasowanie wyrażenia znakowego do wzorce
+* BETWEEN
+* IN; sprawdzenie czy wartość znajduje się w tablicy
+* IS NULL, IS EMPTY
+* MEMBER OF; sprawdzenie czy parametr jest elementem kolekcji
+
+
+
+[source, java]
+----          	
+			SELECT p FROM Person pfrom Person where firstName = 'Jakub'from Person where address.city = 'Gdansk'from Person where firstName LIKE 'Ja%'            
+----   
+
+Dodatkowo, JPQL oferuje także szereg funkcji - zbliżonych do tych z SQL:
+
+* lower - zamiana liter na małe
+* upper - zamiana liter na wielkie
+* trim - usunięcie spacji
+* concat - połączenie dwóch łańcuchów znaków
+* length - zwraca długość łańcucha znaków
+* locate - zwraca pozycję jednego łańcucha w drugim
+* substring - zwraca podłańcuch o określonej długości
+
+JPQL udostępnia także standardowe funkcje sortujące (order by) oraz grupujące:
+
+* count - zlicza ilość elementy w zbiorze
+* max, min - maksymalna/minimalna wartość
+* sum - suma wartości wszystkich pól numerycznych wskazanych przez wyrażenie
+* avg - oblicza średnią z wartości pola numerycznego
+
+Konstruując zapytanie JPQL jest także możliwość podania dodatkowych parametrów, które zostaną użyte (np. w wyrażeniu _where_). Parametry możemy podawać z zachowaniem kolejności lub używając nazwy
+
+
+
+[source, java]
+----          	
+				Person person = entityManager	 .createQuery("from Person where firstName = ?1", Person.class)	 .setParameter(1, "Jakub")	 .getSingleResult();            
+----   
+
+
+
+[source, java]
+----          	
+				Person person = entityManager	 .createQuery("from Person where firstName = :name", Person.class)	 .setParameter("name", "Jakub")	 .getSingleResult();            
+----   
+
+We wszystkich powyższych przykładach, zapytania operowały na kompletnych obiektach; albo jawnie deklarowane było “select * from” albo fraza “select *” była pomijana. Niemniej jednak, w obu przypadkach oznaczało to pobranie kompletnego obiektu. Oczywiście JPQL umożliwia także pobranie tylko części danych z tabeli. W takim przypadku nie zostanie zwrócony konkretny typ danych (Person) ale tablica obiektów (Object[]).
+
+
+
+[source, java]
+----          	
+			Object name = entityManager.createNativeQuery("select p.firstName, p.lastName from Person p").getSingleResult();System.out.println(((Object[])name)[0] + ", " + ((Object[])name)[1]);            
+----   
+
+Jako że operowanie na tablicach obiektów jest stosunkowo mało wygodne, Hibernate oferuje możliwość stworzenia obiektu typu DTO, który zostanie zwrócony:
+
+
+
+[source, java]
+----          	
+			package pl.bnsit.ejb3;public class NameDTO {private String firstName;private String lastName;public NameDTO(String firstName, String lastName) {super();this.firstName = firstName;this.lastName = lastName;}public String getFirstName() {return firstName;}public void setFirstName(String firstName) {this.firstName = firstName;}public String getLastName() {return lastName;}public void setLastName(String lastName) {this.lastName = lastName;}}            
+----   
+
+
+
+
+
+[source, java]
+----          	
+			NameDTO name = (NameDTO) entityManager.createQuery("select new pl.bnsit.ejb3.NameDTO(p.firstName, p.lastName) " +"from Person p").getSingleResult();System.out.println(name.getFirstName() + ", " + name.getLastName());            
+----   
+
+JPA umożliwia także dokonywania zapytań bez pośrednictwa JPQL; tak podane zapytanie zostanie wywołane bezpośrednio na używanej bazie danych. Należy pamiętać, iż jednej strony znacznie zmniejsza to przenaszalność kodu (z powodu pominięcia dialektów JPA). Z drugiej strony, umożliwia odwołanie się do specyficznych dla bazy danych operacji (np. pobranie kolejnej wartości z sekwencji na bazie Oracle). Niestety, w przypadku wywołania natywnego zapytania, nie ma możliwości ‘opakowania’ wyniku w DTO.
+
+
+
+[source, java]
+----          	
+			Object name = entityManager.createNativeQuery("select p.firstName, p.lastName from Person p").getSingleResult();System.out.println(((Object[])name)[0] + ", " + ((Object[])name)[1]);            
+----   
+
+
+		
+=== Zapytania nazwane
+
+JPQL daje bardzo duże możliwości budowania zapytań oraz pobierania danych. Wykorzystywanie metody _entityManger.createQuery_()ma jednak zasadniczą wadę - zapytania, które konstruujemy rozrzucone są po wielu klasach, co znacznie utrudnia ich utrzymanie i ewentualne poprawki. Co więcej, takie zapytania są zwykłymi ciągami znaków co praktycznie uniemożliwia refaktoring. Zmiana nazwy encji pociąga za sobą mało wygodną konieczność przeglądnięcia kodu, w celu zmiany już istniejących zapytań. Jeżeli nie zostanie to dokonane, nie otrzymamy jakiegokolwiek błędu kompilacji, a niedopatrzenie przypomni o sobie dopiero w momencie wykonania zapytania. 
+
+Idealną sytuacją było by definiowanie najpopularniejszych zapytań razem z encją, a następnie wykorzystywanie w aplikacji już istniejących i zdefiniowany zapytań. Taka funkcjonalność istnieje w JPA; są to nazwane zapytania (ang. _named queries_). Nazwane zapytania niczym nie różnią się od tych które definiowaliśmy wcześniej - także wyraża się je w JPQL lub czystym SQL. Różnica polega na miejscu ich definiowania - są one bezpośrednio połączone z encją poprzez adnotację lub wpisy w deskryptorze XML. Są to zapytania statyczne, tzn. raz zdefiniowane nie mogą się zmieniać. Nazywanie zapytań jest przyjmowane za dobrą praktykę, ponieważ znacznie poprawia czytelność oraz organizację kodu źródłowego. Dla używanej przez nas encji definicja takiego zapytania wygląda następująco
+
+
+
+[source, java]
+----          	
+			@Entity@NamedQuery(name = "findByLastname", query="SELECT p from Person p WHERE lastName = :lastname")public class Person {//..}            
+----   
+
+Wywołanie tak zdefiniowanego zapytania odbywa się poprzez metodę e_ntityManager.createNamedQuery_()
+
+
+
+[source, java]
+----          	
+			Person person = (Person) entityManager.createNamedQuery("findByLastname", Person.class).setParameter("lastname", "Marchwicki").getSingleResult();System.out.println(person.getFirstName());            
+----   
+
+Warto zaznaczyć, że przestrzeń nazwa dla zapytań jest globalna, tzn. nazwane zapytanie nie może być określane w taki sam sposób więcej niż jeden raz. Gdy utworzymy zapytanie findById dla więcej niż jednej encji - zostanie wtedy zwrócony wyjątek DuplicateMappingException: Duplicate query mapping findById, który uniemożliwi utworzenie enityManagera. Dlatego dobrą praktyką jest stosowanie przedrostków określających encję do której przynależy zapytanie: 
+
+
+
+[source, java]
+----          	
+			@Entity@NamedQueries({@NamedQuery(name = "Person.findById", query="SELECT p from Person p WHERE personId = :id"),@NamedQuery(name = "Person.findByLastname", query="SELECT p from Person p WHERE lastName = :lastname")})public class Person {//..}            
+----   
+
+A jeszcze lepszą jest przygotowanie statycznych, publicznych pól typu _final_, które definiują nazwy zapytań. Dzięki temu uniknie się stosowania w kodzie ‘magicznych ciągów znaków’ (a co za tym idzie zminimalizuje się prawdopodobieństwo np. literówek).
+
+
+
+[source, java]
+----          	
+			@Entity@NamedQueries({@NamedQuery(name = Person.FIND_BY_ID, query="SELECT p from Person p WHERE personId = :id"),@NamedQuery(name = Person.FIND_BY_LASTNAME, query="SELECT p from Person p WHERE lastName = :lastname")})public class Person {final public static String FIND_BY_ID = "Person.findById";final public static String FIND_BY_LASTNAME = "Person.findByLastname";//..}            
+----   
+
+
+
+
+
+[source, java]
+----          	
+			Person person = (Person) entityManager.createNamedQuery(Person.FIND_BY_LASTNAME, Person.class).setParameter("lastname", "Marchwicki").getSingleResult();            
+----   
+
+
+		
+=== Blokowanie obiektów
+
+Dotychczasowe przykłady działały na zasadzie jednowątkowych aplikacji i niemalże w ogóle nie było analizowane zachowanie w przypadku kilku równoległych transakcji. O ile w przypadku systemów odczytujących dane, nie jest to jakikolwiek problem, to w sytuacji zapisu sytuacja staje się nietrywialna. Należy wprowadzić sposób blokowania i synchronizacji dostępu do zasobów (danych) na czas wprowadzenia zmian i odświeżanie obiektów w sytuacji gdy zmianą zostaną wprowadzone poza transakcją. 
+
+Powszechnie nazywa się to blokowaniem obiektów (ang. _locking_). Wyróżniamy dwie techniki blokowania:
+
+* pesymistyczne (ang. pessimistic locking) - jest to blokowanie na wyłączność, zakładające brak interferencji pomiędzy transakcjami. Tylko jedna transakcje otrzymuje dostęp do zasobu, podczas gdy pozostałe oczekują aż zasób zostanie zwolniony. Jak łatwo się domyślić - takie zachowanie nie współgra z założeniami wielowątkowej i skalowalnej architektury JEE. 
+* optymistyczne (ang. optimistic locking) - dopuszczające możliwość zmiany z zewnątrz. Zakłada się małe prawdopodobieństwo równoległego zapisu, jako że większość aplikacji niewspółmiernie więcej odczytuje danych, niż ich zapisuje. Oczywiście możliwość zaistnienia niespójności danych jest akceptowana; odpowiednie mechanizmy umożliwiają wyjście z takiej niekorzystnej sytuacji.
+
+JPA, które zarządza dostępem do danych, domyślnie nie realizuje żadnej strategii blokowania zasobów; dane są pobierane i zapisywane bez jakichkolwiek zabezpieczeń. W skrajnych przypadkach może to prowadzić do niespójności danych i sytuacji gdzie jedna z transakcji modyfikuje lub usuwa dane, przetwarzane przez inną transakcję. Dlatego też JPA umożliwia zabezpieczenie się przed takimi sytuacjami poprzez sprawdzenie aktualnego stanu encji za pomocą dodatkowej kolumny. Jest to wariacja na temat optymistycznego blokowania, gdzie zamiast całego wiersza weryfikowana jest tylko i wyłącznie wartość wyznaczonej do tego kolumny. 
+
+Programista, aby skorzystać z optymistycznego blokowania, musi wyznaczyć atrybut klasy który będzie podlegał wersjonowaniu i oznaczyć go adnotacją @_Version_. Atrybut ten musi być możliwy do porównania poprzez operator większości / mniejszości (w ten sposób JPA sprawdza czy istniejący w bazie danych wiersz nie jest nowszy) a więc może być on typu: _int_, _short_, _long_ (lub obiektowym odpowiednikiem jednego z wymienionych prymitywów) bądź _Timestamp._
+
+
+
+[source, java]
+----          	
+			@Entitypublic class Phone {@Idprivate long phoneId;private String number;private String extension;@Versionprivate Long version;//... getters and setters}            
+----   
+
+Wartość tego atrybutu jest porównywana ze stanem bazy danych podczas każdej operacji zapisu (usunięcia). Co więcej, JPA samodzielnie pilnuje, aby wartość ta była inkrementowana (w przypadku pól numerycznych) lub aktualizowana(dla wartości typu _Timestamp_). Jeżeli _entityManager_ stwierdzi niespójność danych zwracany jest wyjątek _javax.persistence.OptimisticLockException_ który przerywa transakcje. 
+
+
+
+== Moduł 4: Interceptory i programowanie aspektowe
+Jedną z nowości prowadzonych w EJB3 są interceptory. Jest to pojęcie znane z programowania aspektowego, które umożliwia dekorowanie klasy dodatkowymi funkcjami, bez ingerencji w samą metodę. Jest to pojęcie spopularyzowane przez Spring Framework, a pewnym specyficznym zastosowaniem tej architektury są filtry w aplikacjach webowych. Interceptory umożliwiają opakowanie wywołania metody dodatkową logiką. Są one szczególnie przydatne podczas implementacji wymagań niefunkcjonalnych, które wykraczają poza jedną warstwę systemu. Może być to na przykład logowanie, bezpieczeństwo, auditing itd. 
+
+
+
+NOTE:: Insert original images 
+
+
+
+		
+=== Implementacja interceptora
+
+Posłużymy się przykładem auditingu. Zadaniem interceptora jest kolekcjonowanie informacji o wywołaniach metod biznesowych. Interceptory nie wymagają implementacji żadnych interfejsów, jedynie zadeklarowania publicznej metody której argumentem jest obiekt typu _javax.interceptor.InvocationContext_. Dodatkowo, warto zadbać o to aby metoda interceptora zwracała typ _Object_ i deklarowała uniwersalny wyjątek _Exception_. Wynika to z faktu, że podczas deklarowania interceptora nigdy nie ma pewności, gdzie jego funkcjonalność zostanie wykorzystana. Poprzez zadeklarowanie metody zgodnie z powyższymi zaleceniami, nie należy się obawiać że działania interceptora jakkolwiek złamie kontrakt zadeklarowany przez audytowaną klasę (a byłoby to niepożądane). 
+
+
+
+[source, java]
+----          	
+			package pl.bnsit.ejb3.interceptors;import javax.interceptor.AroundInvoke;import javax.interceptor.InvocationContext;public class AuditingInterceptor {@AroundInvokepublic Object audit(InvocationContext ctx) throws Exception {System.out.println("Running method: " + 	ctx.getMethod().getName());return ctx.proceed();}}            
+----   
+
+Tak zadeklarowany interceptor co prawda nic ciekawego nie robi, ale jest pełno prawnym komponentem który można wykorzystywać w aplikacji. Jego użycie jest równie proste: wystarczy udekorować klasę lub metodę biznesową w następujący sposób: @Interceptors(AuditingInterceptor.class). Deklaracja na poziomie klasy powoduje że interceptor jest używany dla wszystkich metod zadeklarowanych w interfejsie. 
+
+
+
+[source, java]
+----          	
+			@Interceptors(AuditingInterceptor.class)public Person addPerson(Person person) {//..}            
+----   
+
+Interceptory mogą wykorzystywać istniejące już komponenty EJB, a także mieć dostęp do innych komponentów i usług dostarczanych przez serwer aplikacji. Wstrzykiwanie zależności odbywa się na takiej samej zasadzie jak w komponentach sesyjnych: poprzez adnotację @EJB i/lub @Resource
+
+Zadeklarowany w definicji metody obiekt _InvocationContext_ umożliwia pobranie kontekstu wywołania interceptora; _InvocationContext_ oferuje szereg metod które dostarczają informacji o wywołaniu:
+
+* getTarget 	- zwraca referencją do komponentu, do którego aplikowany jest interceptor,
+* getMethod - zwraca nazwę metody, do której aplikowany jest interceptor,
+* getPrameters - zwraca parametry aktualne wywołania metody, do której aplikowany jest interceptor,
+* setPrameters - pozwala na podmianę parametrów aktualnych metody,
+* getContextData - umożliwia wymianę danych pomiędzy interceptorami,
+* proceed - wykonuje metodę, do której aplikowany jest interceptor i zwraca jej wynik.
+
+Interceptory są wariacją na temat wzorca Dekorator, który to pozwala na dodawanie kolejnych warstw i funkcjonalności bez konieczności zmiany pierwotnego kontraktu. W świecie JavaSE praktycznym zastosowaniem tego wzorca są obiekty operujące na strumieniach: InputStream, BufferedInputStream, FileInputStream itd. W podobny sposób, w środowisku JEE można dodawać funkcjonalności do już istniejących obiektów. 
+
+
+		
+=== Konfiguracja deskryptorów wdrożenia
+
+Jak już wspomniałem, interceptory dostarczają funkcjonalność wykraczającą poza ścisłe wymagania. Bardzo często stosuje się je do realizacji ściśle sprecyzowanych wymagań niefunkcjonalnych (jak np. opisywany auditing) lub w bardzo ściśle określonych okolicznościach (np. do mierzenia czasu wywołania metod podczas testów wydajnościowych). Stąd też nacisk aby nie wiązać na stałe interceptorów z kodem aplikacji i wdrażać je w zależności od potrzeb. Aby uzyskać taką elastyczność konfiguracyjną należałoby wrócić do omawianego już deskryptora wdrożenia, pliku ejb-jar.xml, który umożliwia definiowanie powiązań między komponentami bez konieczności ingerencji w kod źródłowy aplikacji (a poprzez dodanie odpowiednich wpisów w pliku konfiguracyjnym). To jest właśnie ‘ten dobry powód’ wspomniany w części 2 przy omawianiu deskryptorów wdrożenia. 
+
+Konfiguracja opisywanego w przykładzie interceptora wygląda następująco:
+
+
+
+[source, java]
+----          	
+			<?xml version="1.0" encoding="UTF-8"?><ejb-jar             
+----   
+
+xmlns="http://java.sun.com/xml/ns/javaee" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+
+[source, java]
+----          	
+			xsi:schemaLocation="http://java.sun.com/xml/ns/javaee             
+----   
+
+	http://java.sun.com/xml/ns/javaee/ejb-jar_3_0.xsd"
+
+[source, java]
+----          	
+			version="3.0"><interceptors><interceptor><interceptor-class>            
+----   
+
+	pl.bnsit.ejb3.interceptors.AuditingInterceptor	</interceptor-class>
+
+[source, java]
+----          	
+			<around-invoke><method-name>audit</method-name></around-invoke></interceptor></interceptors><assembly-descriptor><interceptor-binding><ejb-name>PersonManagerService</ejb-name><interceptor-class>            
+----   
+
+	pl.bnsit.ejb3.interceptors.AuditingInterceptor	</interceptor-class>
+
+[source, java]
+----          	
+			<method><method-name>addPerson</method-name></method></interceptor-binding></assembly-descriptor></ejb-jar>            
+----   
+
+
+
+== Moduł 5: Java Message Service i komponenty sterowane komunikatami
+We wszystkich opracowaniach omawiających technologię EJB3 przewijają się trzy typy komponentów: bezstanowe, stanowe oraz sterowane komunikatami. O ile pierwsze dwa typy zostały już omówione, to teraz przyszła pora na możliwość integracji aplikacji EJB z asynchronicznymi kolejkami.
+
+
+		
+=== Java Message Service
+
+JMS nie jest elementem standardu EJB3, wchodzi jednak w skład architektury JEE. Każdy serwer aplikacyjny wyposażony jest w elementy dostarczające obsługę JMS. Umożliwia to wprowadzenie asynchronicznej komunikacji pomiędzy komponentami. W przeciwieństwie to prezentowanej dotychczas synchronicznej komunikacji, użycie JMS znacząco zmniejsza podatność na zerwanie połączenia a także zmniejsza siłę powiązań pomiędzy stronami komunikacji. Wprowadzany jest ‘pośrednik’ który odpowiada za komunikację. Ani nadawca, ani odbiorca nie komunikują się bezpośrednio ze sobą; wszystkie wiadomości przetwarzane są przez elementy pośrednie (middleware). 
+
+
+
+NOTE:: Insert original images 
+
+
+
+
+JMS jest standardem w świecie Javy jeżeli chodzi o komunikację asynchroniczną. Istnieje szereg implementacji tego standardu, zależnie od dostawcy serwera aplikacji. W środowisku JBoss możemy mieć do czynienia z JBoss MQ (JBoss 4.x), JBoss Messaging (JBoss 5.x) lub HornetQ (JBoss 6.x). Dostępny jest także szereg innych implementacji (komercyjnych jak i opensource). 
+
+
+		
+=== Kolejki i Topiki
+
+Specyfikacja JMS przewiduje dwa sposoby komunikacji: punkt-punkt oraz subskrypcja. Realizowane jest to poprzez interfejsy Queue i Topic:
+
+* Kolejka (queue) jest połączeniem punkt-punkt. Nadawca wysyła wiadomości do kolejki, natomiast odbiorca - odbiera. Każdy komunikat może zostać odebrany przez tylko przez jednego odbiorcę, który potwierdza odbiór wiadomości. W następstwie potwierdzenia komunikat usuwany jest z kolejki. 
+* Temat (topic) natomiast działa na zasadzie publikacji - subskrypcji. Każda wiadomość może mieć wielu odbiorców (subskrybentów), a także wielu nadawców. Wiadomość jest usuwana dopiero gdy zostanie dostarczona do wszystkich subskrybentów. 
+
+Jest to istotne rozróżnienie z punktu widzenia realizacji wymagań biznesowych, niemniej jednak nie jest to kluczowe z punktu widzenia implementacji komponentów sterowanych komunikatami w EJB3. Pokazuje jednak wyraźnie, że klient aplikacji JMS musi samodzielnie zadbać o kilka kluczowych kwestii związanych z odbiorem i przetwarzaniem komunikatu. Jest to m.in.:
+
+* zarządzanie zasobami,
+* zarządzanie wątkami,
+* transakcyjność,
+* bezpieczeństwo wywołań,
+* zrównoważenie obciążenia. 
+
+W przypadku EJB3, wykorzystując komponenty sterowane komunikatami, zadaniem programisty jest tylko i wyłącznie realizacja wymagań biznesowych, odbiór i obsługa wiadomości. O całe otoczenie dba kontener. 
+
+
+		
+=== Wysyłka komunikatu
+
+Do wysłania komunikatu możemy użyć typowego komponentu bezstanowego, zależnego od pary zasobów dostarczanych przez serwer aplikacji: _ConnectionFactory_ (obiektu enkapsulującego parametry konfiguracyjne zdefiniowane przez administratora) i kolejki jako takiej. Zależnie od implementacji JMS, może zajść potrzeba zdefiniowania kolejki samodzielnie - poprzez wpis w odpowiednim pliku konfiguracyjnym. Dla przykładu w JBoss 6 jest to plik hornet-jms.xml (w katalogu deploy/hornetq); w przypadku wcześniejszych wersji serwera (JBoss 4.x) nowe kolejki tworzone były ad-hoc (nie wymagały osobnych wpisów konfiguracyjnych). 
+
+
+
+[source, java]
+----          	
+			package pl.bnsit.ejb3.jms;import javax.annotation.Resource;import javax.ejb.Stateless;import javax.jms.Connection;import javax.jms.ConnectionFactory;import javax.jms.JMSException;import javax.jms.MessageProducer;import javax.jms.ObjectMessage;import javax.jms.Queue;import javax.jms.QueueSession;import javax.jms.Session;import pl.bnsit.ejb3.entity.Person;@Statelesspublic class JmsConnectionFacade implements JmsConnectionFacadeLocal {@Resource(name = "ConnectionFactory", mappedName = "ConnectionFactory")ConnectionFactory connectionFactory;@Resource(name = "queue/test", mappedName = "queue/test")Queue queue;public void sendMessage(Person p) {System.out.println("Queue processed: " + p);Connection connection = null;Session session = null;MessageProducer messageProducer = null;try {connection = connectionFactory.createConnection();session = connection.createSession(            
+----   
+
+	false, QueueSession.AUTO_ACKNOWLEDGE);
+
+[source, java]
+----          	
+			connection.start();messageProducer = session.createProducer(queue);ObjectMessage objectMessage = session.createObjectMessage(p);messageProducer.send(objectMessage);} catch (JMSException e) {e.printStackTrace();} finally {try {if (connection != null)connection.close();if (session != null)session.close();if (messageProducer!=null)messageProducer.close();} catch (JMSException e) {System.out.println(e);}}}            
+----   
+
+
+
+[source, java]
+----          	
+			}            
+----   
+
+Najistotniejszym elementem (poza samym wysłaniem wiadomości) jest moment utworzenia sesji: connection.createSession(). Metoda createSession przyjmuje dwa parametry:
+
+* transacted; wartość logiczna definiująca czy sesja jest objęta transakcją. 
+* acknowledge mode; określa czy odbiorca wiadomości ma potwierdzić jej odebranie. Jeżeli sesja objęta jest transakcją parametr ten jest ignorowany. 
+
+Parametry te wynikają ze specyfikacji JMS i nie jest powiedziane że w środowisku w którym pracujemy w ogóle są brane pod uwagę. Zależy to w dużej mierze od dostawcy serwera aplikacji (a co za tym idzie konkretnej implementacji JMS). Może się zdarzyć że parametry zostaną zignorowane, ponieważ serwer będzie wymagał aby wysyłka wiadomości była objęta transakcją EJB (wtedy pierwszy parametr zostanie zignorowany). Co się zaś tyczy potwierdzania odbioru - dla sesji objętych transakcją przyjmuje się wartość Session.AUTO_ACKNOWLEDGE. W taki przypadku potwierdzenie wiadomości dzieje się automatycznie jako element zatwierdzania transakcji EJB. 
+
+Różnice pomiędzy poszczególnymi wartościami parametru akcnowledge mode omówione są dokładnie w samej specyfikacji JMS. 
+
+
+		
+=== Odbiór wiadomości
+
+Komponenty sterowane komunikatami tworzymy poprzez implementację interfejsu _MessageListener_ (i metody _onMessage_) oraz przez oznaczenie komponentu @MessageDriven. 
+
+
+
+[source, java]
+----          	
+			package pl.bnsit.ejb3.jms;import javax.ejb.ActivationConfigProperty;import javax.ejb.EJB;import javax.ejb.MessageDriven;import javax.jms.Message;import javax.jms.MessageListener;import javax.jms.ObjectMessage;import pl.bnsit.ejb3.database.PersonManagerServiceLocal;import pl.bnsit.ejb3.entity.Person;@MessageDriven(messageListenerInterface = MessageListener.class, activationConfig = { @ActivationConfigProperty(propertyName = "destination",             
+----   
+
+	propertyValue = "queue/test"),
+
+[source, java]
+----          	
+			@ActivationConfigProperty(propertyName = "destinationType",             
+----   
+
+	propertyValue = "javax.jms.Queue"),
+
+[source, java]
+----          	
+			})public class TestQueueMessageListener implements MessageListener {@EJBPersonManagerServiceLocal personManagerService;@Overridepublic void onMessage(Message msg) {try {Person person = (Person) ((ObjectMessage) msg).getObject();System.out.println("Received person: " + person);personManagerService.addPerson(person);} catch (Exception e) {e.printStackTrace();}}}            
+----   
+
+Klasę nasłuchującą konfigurujemy poprzez parametr activationConfig. Jest to tablica elementów @ActivationConfigProperty które umożliwiają szczegółowe określenie parametrów klasy nasłuchującej. Najważniejsze z nich to:
+
+* określenie typu nadawcy (destinationType): kolejka (queue) lub temat (topic) poprzez podanie pełnej nazwy klasy (np. javax.jms.Queue),
+* określenie nazwy nadawcy (destination): nazwa brokera (kolejki bądź tematu) skąd następuje odczyt wiadomości,
+* ustawienie parametrów filtrowania wiadomości (messageSelector): możliwe jest podanie dodatkowych warunków filtrujących wiadomości pobierane z kolejki, w formacie NAZWA_KLUCZA = ‘WARTOŚĆ_KLUCZA’.
+
+W momencie wystąpienia problemów z przetwarzaniem komunikatu (np. w trakcie przetwarzania zostanie zwrócony wyjątek, który nie zostanie obsłużony) odebranie wiadomości nie zostanie potwierdzone. Jako że potwierdzanie wiadomości (ACKNOWLEDGE) jest elementem zatwierdzania transakcji EJB, wyrzucony wyjątek powoduje wycofanie transakcji (_rollback_) i brak potwierdzenia. W takim przypadku broker JMS będzie próbował ponownie wysłać wiadomość (fakt ponowienia próby przesłania wiadomości jak i ilość powtórzeń jest konfigurowalny w sposób charakterystyczny dla konkretnego dostawcy serwera aplikacji). W przypadku gdy ilość możliwych powtórzeń zostanie przekroczona, wiadomość umieszczana jest w kolejce błędów (DLQ – ang. _Dead Letter Queue_) i może zostać przetworzona ręcznie. 
+
+
+		
+=== Asynchroniczność w EJB3.1
+
+Wraz z wejściem w życie standardu EJB 3.1 wykorzystywanie kolejek JMS do asynchronicznej komunikacji wewnątrz aplikacji powoli zaczyna być uznawane za anty-wzorzec. Oczywiście, jeżeli komunikaty używane są do rozproszonego przetwarzania (pomiędzy kilkoma węzłami / aplikacjami) to oczywiście JMS nadal jest najlepszym rozwiązaniem. Jeżeli jednak celem jest tylko rezygnacja z synchronicznego przetwarzania i komunikacja wewnątrz aplikacji, to począwszy od EJB 3.1 zaleca się użycie adnotacji @_Asynchronous_.
+
+Adnotacja ta nie tylko umożliwia asynchroniczną komunikację (jak w przypadku JMS). Umożliwia ona także komunikację dwukierunkową. Komunikacja żądanie - odpowiedź (_request_ - _response_) jest trudna do zaimplementowania przy wykorzystaniu kolejek (potrzeba kolejki wejściowej, wyjściowej oraz minimum trzech niezależnych transakcji). W przypadku użycia @_Asynchronous_ komunikację dwukierunkową uzyskuje się poprzez użycie interfejsu _java.util.concurrent.Future_, który umożliwia przerwanie procesu, sprawdzenia stanu (_Future.isDone_) oraz pobranie wynikowego obiektu. 
+
+
+
+[source, java]
+----          	
+			package pl.bnsit.ejb3.jms;import java.util.concurrent.Future;import javax.ejb.AsyncResult;import javax.ejb.Asynchronous;import javax.ejb.EJB;import javax.ejb.Stateless;import org.apache.log4j.Logger;import pl.bnsit.ejb3.database.PersonManagerServiceLocal;import pl.bnsit.ejb3.entity.Person;@Asynchronous@Statelesspublic class LoggingService implements LoggingServiceLocal {private static Logger logger = Logger.getLogger(LoggingService.class);@EJBPersonManagerServiceLocal personManagerService;@Overridepublic Future<Person> log(Person p) {logger.info("Received person: " + p);personManagerService.addPerson(p);return new AsyncResult<Person>(p);}            
+----   
+
+
+
+[source, java]
+----          	
+			}            
+----   
+
+Podobnie jak w przypadku kolejek JMS, proces obywa się w tle, w niezależnym wątku utworzonym i zarządzanym przez kontener. 
+
+
+
+== Moduł 6: Obsługa transakcji w EJB3
+W dotychczasowych rozważaniach nie skupialiśmy się zbytnio na obsłudze transakcji. Wspomniane jedynie zostało, że jest to element zarządzany przez kontener oraz że każda metoda biznesowa objęta jest transakcją w sposób niejawny. Kontener tworzy transakcję w momencie wywołania pierwszej metody biznesowej, a wywołania kolejnych metod dołączane są do transakcji. Podobnie jak w przypadku baz danych, transakcje EJB można scharakteryzować jako ACID:
+
+* Atomowe (atomic) - transakcja jest elementem niepodzielnym - albo udaje się w całości albo wcale
+* Spójne (consistent) – transakcja nie narusza integralności danych, przed i po wykonaniu transakcji system pozostaje spójny
+* Izolowane (isolated) - jeżeli dwie transakcje wykonywane są równolegle to nie widzą zmian przez siebie wprowadzanych
+* Trwałe (durable) - w przypadku nagłej awarii, system jest w stanie udostępnić spójne i nienaruszone dane, niezależnie od momentu w którym transakcja została przerwana. 
+
+Takie podejście, w połączeniu z jednowątkowym przetwarzaniem, rozwiązało problem braku spójności danych: zasoby przydzielane są do wątku i nie ma obawy ingerencji w dane z zewnątrz. 
+
+
+		
+=== Typy transakcji
+
+Jak pokazano w początkowych przykładach, transakcję można zadeklarować wykorzystując adnotację @TransactionAttribute. Przyjmuje ona kilka wartości:
+
+* REQUIRED; wartość domyślna dla kontenera EJB. Jeżeli klient wywoła metodę biznesową oznaczoną atrybutem REQUIRED to operacja zawsze będzie objęta transakcją. Będzie to nowo utworzona transakcja (w momencie gdy klient nie jest nią objęty) lub wykorzystana będzie transakcja już istniejąca
+* NOT_SUPPORTED; klient nie obsługuje transakcji. Jeżeli klient jest takową już objęty, to na czas wywołania metody transakcja jest zawieszona i po przetwarzaniu wznowiona.
+* SUPPORTS; komponent zachowuje się poprawnie zarówno z jak i bez transakcji. Atrybut SUPPORTS powoduje dwoiste zachowanie się komponentu. W przypadku aktywnej transakcji, zachowanie jest takie samo jak w przypadku atrybutu REQUIRED. Jeżeli natomiast transakcja nie jest aktywna - NOT_SUPPORTED. 
+* REQUIRES_NEW; dla każdego wywołania metody tworzona jest nowa transakcja. Jeżeli transakcja istnieje, jest zawieszona a następnie wznowiona po wywołaniu metody. 
+* MANDATORY; transakcja musi być aktywna. Jeżeli takowa istnieje, zachowanie się kontenera jest analogiczne do sytuacji z atrybutem REQUIRED. Jeżeli transakcji nie ma, zgłaszany jest błąd i wyrzucany jest wyjątek
+* NEVER; sytuacja odwrotna do powyższej. Metoda nie może być wywołana w obrębie transakcji. Jeżeli transakcja nie istnieje - zachowanie jest takie samo jak w przypadku atrybutu NOT_SUPPORTED. W innym przypadku zgłaszany jest błąd. 
+
+Oczywiście, dotyczy to sytuacji w których transakcją zarządza kontener (tzn. atrybut TransactionManagement ma ustawioną wartość CONTAINER). Alternatywą jest ustawienie tego atrybutu na wartość BEAN, wtedy za zarządzanie transakcją odpowiada programista serwisu. 
+
+
+		
+=== Samodzielne zarządzanie transakcjami
+
+Alternatywą do zarządzania transakcjami przez kontener jest samodzielne tworzenie i commit transakcji. Odbywa się to z wykorzystaniem implementacji interfejsu UserTransaction, dostarczanej jako zasób serwera aplikacji. Jeżeli metodę biznesową serwisu oznaczymy adnotacją @TransactionAttribute(TransactionAttributeType.MANDATORY) to wywołanie jej bez jakiegokolwiek przygotowania (jawnego zadeklarowania bądź otwarcia transakcji) może prowadzić do błędu: javax.ejb.EJBTransactionRequiredException. Aby tego uniknąć należy jawnie rozpocząć i zakończyć transakcję poprzez użycie wstrzykniętego zasobu @Resource UserTransaction tx a następnie:
+
+
+
+[source, java]
+----          	
+			@ResourceUserTransaction tx;            
+----   
+
+//..
+
+[source, java]
+----          	
+				tx.begin();service.addPerson(person);tx.commit();            
+----   
+
+
+		
+=== Obsługa wyjątków i ich wpływ na transakcje
+
+Transakcja umożliwia zakończenie procesu lub wycofanie wszystkich zmian w przypadku zaistnienia jakichkolwiek błędów. W przypadku EJB (podobnie jak we wszystkich innych aplikacjach Javy), błędy zgłaszane są poprzez wyjątki. Jednakże, aplikacje JEE rozszerzyły semantykę wyjątków; w odniesieniu do komponentów EJB przyjmuje się dwa rodzaje sytuacji wyjątkowych: wyjątki systemowe oraz wyjątki aplikacyjne. Wynika to z różnic w obsłudze takowych. Zasadniczo, pojawienie się nieobsługiwanego wyjątku powoduje wycofanie transakcji (ang. _rollback_). Nie ma tutaj znaczenia czy transakcję obsługuje kontener czy programista wewnątrz serwisu. Niemniej jednak, zdarzają się w aplikacji wyjątki których pojawienie się nie powinno zakłócać biegu procesu. W tym celu wprowadzono do specyfikacji adnotację @_ApplicationException_, którą można oznaczyć wyjątki wewnętrzne aplikacji. 
+
+
+
+[source, java]
+----          	
+			package pl.bnsit.ejb3;import javax.ejb.ApplicationException;@ApplicationException(rollback = false)public class LoggingNotAvailableException extends RuntimeException {}            
+----   
+
+Poprzez atrybut ApplicationException.rollback programista decyduje czy zgłoszenie wyjątku powoduje wycofanie transakcji czy proces jest kontynuowany. Nie jest to możliwe dla wszystkich innych wyjątków (nazwanych tutaj systemowymi). Jeżeli wyjątek nie posiada wspomnianego oznaczenia, jest opakowywany przez kontener w wyjątek EJBException, który wymusza wycofanie transakcji. 
+
+
+
+== Moduł 7: Bezpieczeństwo wywołania usług
+Jak już opisywałem, kontener EJB dostarcza szeregu usług, jak zarządzanie transakcjami, wątkami, obsługę bazy danych bądź wywołań asynchronicznych. Jedną z usług dotychczas nieomawianą są aspekty bezpieczeństwa. 
+
+W przypadku każdego systemu (niezależnie czy jest to aplikacja JEE czy jakakolwiek inna), bezpieczeństwo opiera się na trzech filarach:
+
+* autentykacja (uwierzytelnianie) - określenie czy klient jest tym za kogo się podaje (np. poprzez weryfikację hasła),
+* autoryzacja - określenie czy klient ma dostęp do zasobu którego żąda,
+* zapewnienie poufności przesyłanych danych - np. zapewnienie szyfrowania kanału komunikacji, aby przekazane dane były bezpieczne. 
+
+Bezpieczeństwo aplikacji EJB3 opiera się na rolach. Rola określa poziom uprawnień, potrzebnych do wywołania metody lub metod komponentu sesyjnego. Specyfikacja EJB3 umożliwia powiązanie roli z konkretnym komponentem; komponent deklaruje w jakiej roli musi występować użytkownik aby móc skorzystać z zasobu. Stąd często podejście to nazywane jest bezpieczeństwem deklaratywnym. Architekt systemu definiuje role, biznesowo powiązane z dziedziną komponentu (np. w przypadku systemu zarządzania treścią może to być _gość, zarejestrowany użytkownik, autor, moderator, administrator_). Role to w żaden sposób nie warunkują jacy użytkownicy zarejestrowani są w systemie – to jest domena serwera aplikacji. 	
+
+Specyfikacja w żaden sposób nie określa natomiast mapowania rzeczywistych użytkowników systemu, na role zdefiniowane przez komponenty. Ta konfiguracja jest zależna do dostawcy serwera i umówię ją na przykładzie podstawowej autentykacji (użytkownik / hasło) dla serwera JBoss.
+
+
+		
+=== Autoryzacja
+
+Na początek, przyjrzyjmy się zdefiniowanemu wcześniej, najprostszemu komponentowi EJB.
+
+
+
+[source, java]
+----          	
+			package pl.bnsit.ejb3.restricted;            
+----   
+
+
+
+[source, java]
+----          	
+			import javax.ejb.Local;import javax.ejb.Remote;import javax.ejb.Stateless;            
+----   
+
+
+
+[source, java]
+----          	
+			@Stateless@Local(SecuredServiceLocal.class)@Remote(SecuredServiceRemote.class)public class SecuredService implements SecuredServiceLocal,SecuredServiceRemote {            
+----   
+
+public String getData() {
+
+[source, java]
+----          	
+			return "Very important secure data!";}            
+----   
+
+
+
+[source, java]
+----          	
+			}            
+----   
+
+Przy tak zdefiniowanym serwisie dostęp do usługi jest nieograniczony. Co widać na przykładowym wywołaniu przez klienta:
+
+
+
+[source, java]
+----          	
+			public class EjbClient {            
+----   
+
+
+
+[source, java]
+----          	
+			public static void main(String[] a) throws Exception {Hashtable<String, String> environment =             
+----   
+
+	new Hashtable<String, String>();
+
+[source, java]
+----          	
+			environment.put(Context.INITIAL_CONTEXT_FACTORY,"org.jnp.interfaces.NamingContextFactory");environment.put(Context.URL_PKG_PREFIXES,"org.jboss.naming:org.jnp.interfaces");environment.put(Context.PROVIDER_URL, "jnp://localhost:1099");            
+----   
+
+
+
+[source, java]
+----          	
+			InitialContext ctx = new InitialContext(environment);SecuredServiceRemote obj = (SecuredServiceRemote) ctx.lookup("SampleApplication/SecuredService/remote");            
+----   
+
+
+
+[source, java]
+----          	
+			System.out.println("Starting: " + System.currentTimeMillis());            
+----   
+
+
+
+[source, java]
+----          	
+			System.out.println(obj.doAction());System.out.println(obj.getData());            
+----   
+
+
+
+[source, java]
+----          	
+			System.out.println("Done: " + System.currentTimeMillis());}}            
+----   
+
+
+
+
+
+[source, java]
+----          	
+			Starting: 1318155144234Everybody can do this!Very important secure data!Done: 1318155144531            
+----   
+
+Aby zadeklarować role konieczne do wywołania usługi posługujemy się annotacjami: @javax.annotation.security.RolesAllowed oraz @javax.annotation.security.PermitAll lub @javax.annotation.security.DenyAll. Jeżeli chcielibyśmy dołączyć serwis do już zdefiniowanej grupy użytkowników należałoby:
+
+
+
+[source, java]
+----          	
+			@Stateless@Local(SecuredServiceLocal.class)@Remote(SecuredServiceRemote.class)@RolesAllowed("admin")public class SecuredService implements SecuredServiceLocal,SecuredServiceRemote {            
+----   
+
+
+
+[source, java]
+----          	
+			public String getData() {return "Very important secure data!";}            
+----   
+
+
+
+[source, java]
+----          	
+			}            
+----   
+
+Przy tak skonfigurowanym serwisie, oczekiwalibyśmy że w momencie wywołania metody serwer odrzuci nasze żądanie i zwróci następujący wyjątek javax.ejb.EJBAccessException. Byłoby to zachowaniem pożądanym, ponieważ nasz użytkownik w żaden sposób nasz użytkownik nie został jeszcze uwierzytelniony. Niestety tak się nie stało, co wynika z drugiego aspektu bezpieczeństwa – konieczność konfiguracji ról po stronie serwera aplikacji. 
+
+
+		
+=== Autentykacja
+
+Na etapie tworzenia aplikacji definiowane są możliwe role, które zostają następnie przypisane do komponentów sesyjnych - pokazane zostało to w poprzednim przykładzie. Ta część została określona w specyfikacji i odnosi się do wszystkich serwerów aplikacji zgodnych z EJB3. Komponenty utworzone w taki sposób będą wymagały tychże ról niezależnie od środowiska na którym zostaną wdrożone. 
+
+Co pozostaje do określenia, to mapowanie lokalnych użytkowników na zdefiniowane już role. 
+
+
+		
+=== Konfiguracja ról na przykładzie serwera JBoss
+
+W przypadku serwera JBoss, konfiguracja użytkowników rozpoczyna się od utworzenia domeny. Domena składa się z listy użytkowników oraz przypisanych do nich ról. Serwer aplikacji może definiować wiele domen, które używane są przez jedną lub więcej aplikacji JEE. Domeny definiujemy w pliku /server/default/conf/login-config.xml
+
+
+
+[source, java]
+----          	
+			<application-policy name="application-security-domain">	<authentication><login-module code="org.jboss.security.auth.spi.UsersRolesLoginModule" 		flag="required">	<module-option name="usersProperties">props/app-users.properties            
+----   
+
+	</module-option>
+
+[source, java]
+----          	
+				<module-option name="rolesProperties">props/app-roles.properties            
+----   
+
+	</module-option>
+
+[source, java]
+----          	
+			</login-module>	</authentication></application-policy>            
+----   
+
+Każdy serwer aplikacji udostępnia szereg modułów służących do autentykacji. Pokazany w przykładzie UsersRolesLoginModule należy do najprostszych. JBoss umożliwia także autentykację poprzez LDAP, bazę danych, pliki XML a także udostępnia API do tworzenia własnych rozszerzeń (np. w oparciu o specyficzne serwery single-sign-on). 
+
+W kolejnym kroku należy uzupełnić pliki app-users.properties (definiujemy użytkowników i przypisujem im hasła) i app-roles.properties (mapuje użytkowników na role systemowe):
+
+
+
+[source, java]
+----          	
+			test=testp1            
+----   
+
+
+
+[source, java]
+----          	
+			test=admin             
+----   
+
+Ostatnim krokiem jest konieczność przypisania komponentu do domeny. Odbywa się to poprzez adnotację @org.jboss.ejb3.annotation.SecurityDomain. Powiązanie z domeną pozwala serwerowi aplikacji udostępnić komponent konkretnym użytkownikom związanym z lokalną konfiguracją serwera aplikacji. 
+
+
+
+[source, java]
+----          	
+			package pl.bnsit.ejb3.restricted;            
+----   
+
+
+
+[source, java]
+----          	
+			import javax.annotation.security.PermitAll;import javax.annotation.security.RolesAllowed;import javax.ejb.Local;import javax.ejb.Remote;import javax.ejb.Stateless;            
+----   
+
+
+
+[source, java]
+----          	
+			import org.jboss.ejb3.annotation.SecurityDomain;            
+----   
+
+
+
+[source, java]
+----          	
+			@Stateless@Local(SecuredServiceLocal.class)@Remote(SecuredServiceRemote.class)            
+----   
+
+
+
+[source, java]
+----          	
+			@SecurityDomain("application-security-domain")@RolesAllowed("admin")public class SecuredService implements SecuredServiceLocal,SecuredServiceRemote {//..}            
+----   
+
+Tak skonfigurowany serwis zachowuje się zgodnie z oczekiwaniami. W momencie wywołania metody otrzymujemy oczekiwany przez nas wyjątek bezpieczeństwa:
+
+
+
+[source, java]
+----          	
+			Exception in thread "main" javax.ejb.EJBAccessException: Invalid User            
+----   
+
+
+		
+=== Konfiguracja klienta
+
+Pozostaje zatem kwestia w jaki sposób skonfigurować klienta, aby przed wywołania usługi uwierzytelnił się. W tym celu, zamiast najprostszego _NamingContextFactory _wykorzystanego w pierwszym przykładzie, używamy _JndiLoginInitialContextFactory _dostarczonej przez serwer aplikacyjny JBoss. Umożliwia on podanie nazwy użytkownika I hasła, które umożliwią wywołania oczekiwanych metod.
+
+
+
+[source, java]
+----          	
+			public static void main(String[] a) throws Exception {Hashtable<String, String> environment = new Hashtable<String, String>();environment.put(Context.INITIAL_CONTEXT_FACTORY,"org.jboss.security.jndi.JndiLoginInitialContextFactory");environment.put(Context.URL_PKG_PREFIXES,"org.jboss.naming:org.jnp.interfaces");environment.put(Context.PROVIDER_URL, "jnp://localhost:1099");environment.put(Context.SECURITY_PRINCIPAL, "test");environment.put(Context.SECURITY_CREDENTIALS, "testp1");InitialContext ctx = new InitialContext(environment);SecuredServiceRemote obj = (SecuredServiceRemote) ctx.lookup("SampleApplication/SecuredService/remote");            
+----   
+
+
+
+[source, java]
+----          	
+			System.out.println("Starting: " + System.currentTimeMillis());System.out.println(obj.doAction());System.out.println(obj.getData());System.out.println("Done: " + System.currentTimeMillis());}            
+----   
+
+
+		
+=== Granulacja ról w aplikacji
+
+W powyższym przykładzie ograniczyliśmy się tylko i wyłącznie do zadeklarowania ról uprawnionych do skorzystania z serwisu. Pakiet javax.annotation.security oferuje jednak więcej. Poza @RolesAllowed, kontener umożliwia także zablokowanie lub udostępnienie zasobu dla wszystkich, poprzez adnotacje @DenyAll oraz @PermitAll. Wszystkie trzy deklaracje mogą być stosowane zarówno na poziomie klasy (odnoszą się wtedy do wszystkich metod biznesowych deklarowanych przez komponent) jak i dla konkretnych metod. Umożliwia to daleko idącą granulację uprawnień, np. niektóre metody dostępne są dla wszystkich, podczas gdy inne tylko dla zalogowanych użytkowników. 
+
+
+
+== Moduł 8: Usługi wyzwalane czasem
+Kolejną usługą oferowaną przez kontener EJB jest możliwość powiadamiania komponentu EJB o upływie czasu i umożliwienie odpowiedniej reakcji na takowe zdarzenia. 
+
+
+		
+=== Konfiguracja serwisu
+
+Przede wszystkim, obsługa zdarzeń odbywa się poprzez wywołanie przez kontener ‘metody zwrotnej’ (ang. _callback method_). Jeżeli serwis udostępnia taką metodę, kontener może ją uruchomić w momencie zaistnienia zdarzenia. Pierwszym krokiem jest przygotowanie komponentu EJB. Możliwe jest to tylko i wyłącznie dla bezstanowych komponentów sesyjnych. Odbywa się to poprzez:
+
+* implementację interfejsu _javax.ejb.TimedObject_, który wymusza implementację metody ejbTimeout(Timer),
+* poprzez oznaczenie metody komponentu adnotacją @_javax.ejb.Timeout_. Taka metoda musi przyjmować parametr _javax.ejb.Timer_. 
+
+
+
+[source, java]
+----          	
+			@Timeoutpublic void timout(Timer timer) {System.out.println("Timeout!!!");secondService.cancel();}            
+----   
+
+	
+
+
+
+[source, java]
+----          	
+			public void ejbTimeout(Timer timer) {// ... akcja}            
+----   
+
+
+		
+=== Rejestracja Timer’a
+
+Samo zdefiniowanie metody zwrotnej to jednak połowa konfiguracji. Dodatkowo, należy powiadomić kontener o oczekiwaniu informacji o upływie czasu. Odbywa się to poprzez interfejs _javax.ejb.TimerService_
+
+
+
+[source, java]
+----          	
+			@ResourceTimerService timerService;            
+----   
+
+
+
+[source, java]
+----          	
+			public void setupTimer() {System.out.println("Creating timer");timerService.createTimer(5000, null);}            
+----   
+
+Używając metody TimerService.createTimer (lub którąś z jej wariacji) można żądać jednorazowego wywołania metody lub regularnych powtórzeń jej wywołania. 
+
+
+		
+=== Praktyczne użycie
+
+Najczęściej spotykanym przypadkiem użycia usług wyzwalanych czasem jest obsługa regularnie powtarzających się czynności (np. heart beat - sprawdzenie czy zewnętrzny serwis działa i odpowiada, czyszczenie tymczasowych struktur danych itp.)
+
+Innym przypadkiem jest obsługa długo działających transakcji (zbyt długo); nieprzypadkowa jest tutaj nazwa adnotacji @Timeout). W sytuacji gdy nie mamy pewności ile może potrwać przetwarzanie, interfejs TimedObject umożliwia elegancką obsługę upływającego czasu i zapewnie możliwość adekwatnego poinformowania klienta o problemach. Nie odbywa się to standardowo poprzez TimerService (co wynika ze specyfiki EJB - jedna transakcja to jeden wątek, a wątek sam siebie nie może przerwać). Możliwe jest jednak skonfigurowanie serwera aplikacji aby poprzez odpowiednie wywołanie właśnie TimerService.
+
+
+
+== Moduł 9: Wdrożenie
+W dotychczasowych przykładach w ogóle nie był analizowany sposób w jaki aplikacja jest wdrażana na serwer. Całość odbywała się automatycznie, wprost ze środowiska programistycznego. Jest to jednak kwestia warta omówienia. 
+
+Do osadzania aplikacji na serwerze aplikacji używa się plików EAR (ang. _Enterprise Archive_), które łączą w sobie jeden lub więcej modułów. Wszystkie zawarte w archiwum moduły wdrażane są jednocześnie, w spójny sposób (tzn. analizowana jest struktura zależności między modułami i komponentami i serwer pilnuje odpowiedniej kolejności inicjalizacji serwisów). Struktura pliku zawarta jest w pliku application.xml, w katalogu META-INF. W przypadku naszych przykładowych aplikacji plik ten wyglądał następująco:
+
+
+
+[source, java]
+----          	
+			<?xml version="1.0" encoding="UTF-8"?><application             
+----   
+
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+
+[source, java]
+----          	
+			xmlns="http://java.sun.com/xml/ns/javaee"             
+----   
+
+xmlns:application="http://java.sun.com/xml/ns/javaee/application_5.xsd"
+
+[source, java]
+----          	
+			xsi:schemaLocation="http://java.sun.com/xml/ns/javaee             
+----   
+
+	http://java.sun.com/xml/ns/javaee/application_5.xsd"
+
+[source, java]
+----          	
+			id="Application_ID" version="5"><display-name>SampleApplication</display-name><module><web><web-uri>SampleApplicationWeb.war</web-uri><context-root>SampleApplicationWeb</context-root></web></module><module><ejb>SampleApplicationEJB.jar</ejb></module></application>            
+----   
+
+Jak widać, aplikacja składała się dwóch modułów: EJB oraz WWW. W ogromniej większości przypadków ma się do czynienia głównie z tymi dwoma modułami. EJB zawiera w sobie komponenty EJB (zarówno sesyjne jak i encje, a także wszelkie możliwe deskryptory konfiguracyjne). Moduł taki jest plikiem JAR. Oczywiście, możliwe jest dołączone do aplikacji zwykłych bibliotek, zawierających zwykłe klasy POJO i serwisy. 
+
+Warstwa Web naszej aplikacji znajduje się w pliku z rozszerzeniem WAR; tam znajdują się wszystkie pliki HTML, JSP, serwety oraz pliki konfiguracyjne odpowiednie dla specyfikacji serwletów. 
+
+
+
